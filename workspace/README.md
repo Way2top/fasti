@@ -66,7 +66,7 @@ fasti --help
 | 第三方包 | **无**。不 `pip install` 任何依赖；全程无网络调用 |
 | 文件锁 | `flock`（macOS/Linux）；NFS 等不支持 `flock` 的文件系统不保证（ADR-015） |
 
-依赖自检：`python3 -m unittest discover -s tests -v`（**68 个用例**：v2 标识(UUIDv7)/短前缀/格式门/类别复活/持久化短 ID 守卫 + 分层/确定性/导出导入/CLI/网页/静态资源守卫，含「禁止 import UI 模块 / 禁止 print / 禁止第三方依赖」的分层断言）。
+依赖自检：`python3 -m unittest discover -s tests -v`（**72 个用例**：v2 标识(UUIDv7)/短前缀/格式门/类别复活/持久化短 ID 守卫 + **写路径原子性（失败不落盘）** + 分层/确定性/导出导入/CLI/网页/静态资源守卫，含「禁止 import UI 模块 / 禁止 print / 禁止第三方依赖」的分层断言）。
 
 ---
 
@@ -114,7 +114,7 @@ workspace/
 │       ├── web.py                  # 本机网页表单后端（127.0.0.1 + 令牌 + Origin/Host 校验）
 │       ├── static_files.py         # 同源静态资源白名单（3 条只读路由）
 │       └── web_static/             # index.html + style.css + app.js（零外部请求）
-└── tests/                          # _base.py + 13 个 test_*.py（68 个用例）
+└── tests/                          # _base.py + 14 个 test_*.py（72 个用例）
 ```
 
 **为什么 `core/schema/database-schema.sql` 有一份副本**：`verify` 的 `sql.constraints` 检查与导入流水线第 4 步需要把折叠结果载入内存 SQLite 执行同一份 DDL。该文件是从 `artifacts/database-schema.sql` **逐字节复制**的只读副本（schema_version 2，sha256 `0f29b8810e822e6ca8d600b274a903b8570992e7dc0fcebd6f68600794e5a049`），便于离线运行；`artifacts/` 未被修改。也可用环境变量 `FASTI_SCHEMA_PATH` 指向其他 DDL。
@@ -138,6 +138,8 @@ workspace/
 ```
 
 - 数据目录默认权限 `0700`、文件 `0600`；全部 UTF-8 文本，**不落地任何 `.db`**。
+- **写路径原子性**：所有写命令先在内存中折叠并校验领域不变量，**通过后才**原子重写 `events.jsonl`；
+  任何校验失败（含自动类别 key 撞车）都不会留下事件，文件字节不变。
 - `profile/`、`dist/`、`state/manifest.json` 都是**可丢弃派生结果**：删掉后 `recompute`/`render` 会逐字节还原（AC-2-4）。
 - 迁移 = 整目录复制（AC-8-2），或 `export` → 新环境 `import`（AC-12-1）。
 
@@ -264,7 +266,7 @@ python3 run.py import /tmp/bundle --overwrite   # 非空环境必须显式覆盖
 ## 10. 验证方式
 
 ```bash
-# A. 自动化自测（68 个用例；含 UUIDv7/短前缀/格式门/类别复活/持久化守卫 + 分层/确定性/导出导入/CLI/网页/静态资源）
+# A. 自动化自测（72 个用例；含 UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性 + 分层/确定性/导出导入/CLI/网页/静态资源）
 python3 -m unittest discover -s tests -v
 
 # B. 端到端自检（存储不变量 + 内存 SQLite 约束 + 确定性 + 三产物一致 + 导出导入往返）
