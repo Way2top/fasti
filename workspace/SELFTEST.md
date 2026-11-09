@@ -87,8 +87,8 @@
 | ST-48 | AC-13-1~13-5（防呆） | `node --check fasti/adapters/web_static/app.js` + 断言 IIFE 首尾行 | 修复 R-F1 后 **exit 0**（修复前 `SyntaxError: Unexpected token '}'`，exit 1）；断言首行 `(function () {`、次行 `"use strict";`、倒数第二行 `})();` | ✅ |
 | ST-49 | 静态资源完整性（防呆） | 检查 `web_static/` 三文件存在/非空/单末尾 LF、`index.html` 仅同源引用、零外部 URL、与基线内联内容 sha256 一致 | 全部通过；`app.js` 内容 sha256 `0fb916a6…`、`style.css` 内容 sha256 `d6e0c406…` 与 `git show refactor-baseline:…/index.html` 的内联内容**逐字节相同** | ✅ |
 
-**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **75 条自动化用例**（C-06 v2：UUIDv7/短前缀/格式门/类别复活/持久化短 ID 守卫/写路径原子性/前端字段契约等，见 §9）；无失败项。
-自动化测试：`Ran 75 tests … OK`（见 §4.1 与 §9）。
+**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **76 条自动化用例**（C-06 v2：UUIDv7/短前缀/格式门/类别复活/持久化短 ID 守卫/写路径原子性/前端字段契约 fixture 等，见 §9）；无失败项。
+自动化测试：`Ran 76 tests … OK`（见 §4.1 与 §9）。
 > 注：下表 ST-01~ST-47 中出现的 `fact-0001` / `line-0001` / `cat-0002` 为 **v1（序号方案）历史记录**；C-06 迁移后同一行为以 UUIDv7 + 短前缀复现，见 §9。
 
 ---
@@ -99,9 +99,9 @@
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests -v
-…（75 个用例，全 ok）
+…（76 个用例，全 ok）
 ----------------------------------------------------------------------
-Ran 75 tests in 2.631s
+Ran 76 tests in 1.522s
 
 OK
 ```
@@ -308,11 +308,11 @@ python3 -V                     # 期望 3.9+（实测 3.13.3）
 python3 -c "import sqlite3; print(sqlite3.sqlite_version)"   # 期望 >= 3.38（需 JSON1）
 ```
 
-### 4.1 一键自动化（覆盖 v2 标识/短前缀/格式门/类别复活/写路径原子性/前端字段契约/确定性/演进纠正/导入导出/CLI/网页/分层/静态资源，75 用例）
+### 4.1 一键自动化（覆盖 v2 标识/短前缀/格式门/类别复活/写路径原子性/前端字段契约/确定性/演进纠正/导入导出/CLI/网页/分层/静态资源，76 用例）
 
 ```bash
 python3 -m unittest discover -s tests -v
-# 期望最后三行：Ran 75 tests in … / OK
+# 期望最后三行：Ran 76 tests in … / OK
 ```
 
 ### 4.2 端到端手工场景（照抄命令，对比输出）
@@ -459,7 +459,7 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 
 - 全部实现位于 `workspace/`，入口 `python3 run.py …`（或安装后的 `fasti …`）。
 - 运行方式与命令速览见 [`README.md`](README.md)。
-- 自测统计：**自动化 75/75 通过（见 §9，含 QA 回归修复 4 条 + 前端字段契约 3 条）；手工/端到端 49 条用例中 47 条完全通过、2 条「核心语义通过 + 真实环境待验」、0 失败**。
+- 自测统计：**自动化 76/76 通过（见 §9，含 QA 回归修复 4 条 + 前端字段契约 4 条；无 artifacts 环境同样 0 skip 全绿）；手工/端到端 49 条用例中 47 条完全通过、2 条「核心语义通过 + 真实环境待验」、0 失败**。
 - **等待 QA 独立验证**：以上「完成」仅为开发侧自测结论，不代表项目验收通过；QA 应按 `artifacts/product-spec.md` 的 59 条 AC 独立复现并给出 `pass` / `fail` 判定。
 
 ---
@@ -665,14 +665,16 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 | 4 | **`cb1e819`** | **架构师裁决：默认短 ID 8 → 12 位**（ADR-023 v1.5 / api-spec v1.2.1）：`SHORT_ID_LEN=12` 单一常量、`SHORT_ID_RE`、`short_id()`、自动类别 key `c-<12位>`、`CONTRACT_VERSION 1.1.0→1.2.1`、`app.js` 显示截断 12；测试同步 12 位口径（纯显示层，无 schema/数据变更） |
 | 5 | `8ce065a` | README / SELFTEST 同步 12 位短 ID 口径与实测证据 |
 | 6 | `fa14fcf` | QA 回归修复：P0 写路径改为「先内存折叠校验、通过后才落盘」+ 自动类别 key 全量碰撞检查；P1 网页短 ID 去连字符；P2 错误码兜底文案用 FORMAT_VERSION；新增 `test_write_atomicity.py`（68 → 72） |
-| 7 | **`17cb6da`** | **用户实测阻断修复**：网页类别对象字段 `item.category_key` → `item.key`（5 处）；新增 `test_web_contract.py`（前端 JS↔api-spec 字段契约，72 → 75） |
+| 7 | `17cb6da` | 用户实测阻断修复：网页类别对象字段 `item.category_key` → `item.key`（5 处）；新增 `test_web_contract.py`（前端字段契约，72 → 75） |
+| 8 | **`8da554c`** | **契约测试静默失效修复**：新增随仓库提交的 `tests/fixtures/api_contract_fields.json`；无 artifacts 时 0 skip；artifacts 存在时 fixture↔spec 交叉校验；覆盖扩展 StatusReport/Render/Recompute/错误封套（75 → 76） |
+| 9 | 本文件 commit | README / SELFTEST 同步（§9.10 fixture 方案、无 artifacts 实测、两次 red-check、fixture 漂移校验） |
 | 8 | 本文件 commit | README / SELFTEST 同步（§9.9 前端字段契约修复证据；用例 75） |
 
-### 9.3 自动化测试（75 用例，全绿）
+### 9.3 自动化测试（76 用例，全绿）
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests
-Ran 75 tests in 2.631s
+Ran 76 tests in 1.522s
 OK
 ```
 
@@ -685,8 +687,10 @@ OK
 - `test_format_gate.py`（6）：v1 数据目录 ⇒ `STORE_FORMAT_UNSUPPORTED`（退出码 5，消息含「迁移」「§12.5」）；
   verify 同样上报退出码 5；v1 bundle / 未来版本 bundle ⇒ `IMPORT_UNSUPPORTED_FORMAT_VERSION`（退出码 4，
   消息含「UUIDv7 迁移」「当前支持版本 2」）；新 store 事件 `format_version == 2`；导出 manifest == 2。
-- `test_web_contract.py`（3）：**前端 `app.js` 的类别/事实对象字段访问必须是 api-spec `Category`/`Fact.properties`
-  的子集**（防 `item.category_key` 这类前端字段名漂移；白名单仅 3 条并逐条注明理由；已验证「改回 bug 会红」）。
+- `test_web_contract.py`（4）：**前端字段契约守卫（fixture 快照 + spec 交叉校验）**：
+  `tests/fixtures/api_contract_fields.json` 随仓库提交（无 artifacts 也可执行），覆盖 Category/Fact/
+  StatusReport(含 counts/freshness/host_access)/Render/Recompute/错误封套；artifacts 存在时与真实 spec
+  交叉校验（漂移即 fail）；白名单逐条映射并注明理由（已验证「改回 bug 会红」「fixture 漂移会红」）。
 - `test_write_atomicity.py`（3）：**固定同毫秒时钟/随机源的自动类别 key 撞车 ⇒ `VALIDATION_CATEGORY_KEY_TAKEN`，
   `events.jsonl` sha256 与条数不变、store 仍可读可写**；9 条失败写操作逐一断言 events sha256 不变。
 - `test_id_persistence_guard.py`（3）：**短 ID 不得出现在任何持久化/导出内容**（events/profile/dist/导出 bundle，
@@ -925,4 +929,87 @@ GET /api/facts → facts 数量 1、第一条类别 tech；GET / → HTTP:200
 | `node --check` | exit 0；页面零外部请求不变 |
 | 行数 | 无文件 >500（`test_web_contract.py` 130 行） |
 | 用户数据 | 全程 `--data-dir` 临时目录，未触碰 `~/.fasti` |
+
+### 9.10 前端契约守卫的「静默失效」修复（fixture 入库 + 交叉校验）· commit `8da554c`
+
+#### 问题
+
+原 `tests/test_web_contract.py` 直接读取 `../artifacts/api-spec.yaml`，而 `artifacts/` 已被
+`.gitignore` 排除（内部文档不公开）。**QA 实测**：模拟公共仓库（无 `artifacts/`）时
+`Ran 72 tests … OK (skipped=1)` —— 恰恰是抓「网页下拉 undefined」bug 的那条守卫被跳过，
+clone 公开仓库的人永远不会执行它。
+
+#### 修复方案
+
+1. **契约快照入库**：新增 `workspace/tests/fixtures/api_contract_fields.json`（随仓库提交），
+   固化前端消费的对象字段（11 个对象类型）：
+   `Category`、`Fact`、`StatusReport`、`StatusReportCounts`、`StatusReportFreshness`、
+   `StatusReportHostAccessItem`、`RenderResult`、`RenderArtifactItem`、`RecomputeResult`、
+   `ResponseEnvelope`、`Error`。
+2. **fixture 为第一来源**（公共仓库也可执行）；**artifacts 存在时交叉校验**（fixture 漂移即 fail）：
+   - `domain_model.$defs.{Category,Fact,StatusReport,...}` 缩进解析（零第三方解析器）；
+   - `conventions.error_envelope.json_shape`（ResponseEnvelope / Error）；
+   - `core_api.render` / `core_api.recompute` 的 `output_json.data.properties`（Render/Recompute）；
+   - 比较模式：`Category/Fact/嵌套对象/Error/Render/Recompute` 完全相等；
+     `StatusReport` 为「fixture ⊆ spec」（前端只消费子集），fixture 多出字段即漂移 fail。
+3. **无 artifacts 时不 skip**：交叉校验测试打印显式 note（`artifacts/api-spec.yaml 不存在；
+   使用仓库内 fixture 契约快照，交叉校验不可用（守卫仍生效）`）并继续通过；
+   fixture 缺失则**显式 fail**（不会静默通过）。
+4. **覆盖扩展**：扫描别名扩为 `item / category / fact / counts / freshness / entry / payload / err / data`；
+   白名单逐条映射到 fixture 对象并写明理由（`category.value`=form 控件、`item.path/bytes`=RenderArtifactItem、
+   `payload.migrate_to`=本地请求体、`data.*` 逐个映射 StatusReport/RenderResult/RecomputeResult 等）；
+   **未登记的 `data.*` 字段直接 fail**（强制显式登记理由）。
+
+#### 验证 1：无 `artifacts/` 副本（公共仓库模拟）
+
+```bash
+$ BASE=$(mktemp -d); cp -R workspace "$BASE/workspace"   # 目录中不存在 artifacts/
+$ cd "$BASE/workspace" && python3 -m unittest discover -s tests
+Ran 76 tests in 2.501s
+OK
+# 无 "skipped=" 标记 ⇒ skip 数 = 0（全部执行）
+# 契约测试仍运行 4 条，并打印：
+# note: artifacts/api-spec.yaml 不存在；使用仓库内 fixture 契约快照，交叉校验不可用（守卫仍生效）
+```
+
+#### 验证 2：正常目录（fixture ↔ api-spec 交叉校验）
+
+```bash
+$ python3 -m unittest discover -s tests
+Ran 76 tests in 1.522s
+OK      # test_fixture_matches_api_spec 通过：fixture 与真实 spec 完全一致
+```
+
+#### 验证 3：red-check（两处均实际执行）
+
+**(a) 把 app.js 的 bug 改回去**（`option.value = item.key` → `item.category_key`）：
+```
+# 正常目录
+FAIL: test_app_js_object_fields_match_contract — app.js 字段访问与契约快照不一致
+FAIL: test_category_identity_is_key_in_app_js — app.js 不得访问 item.category_key…
+Ran 4 tests … FAILED (failures=2)
+# 无 artifacts 副本：同样 FAILED (failures=2)（守卫不依赖 artifacts）
+# 恢复修复后：Ran 4 tests … OK
+```
+
+**(b) fixture 漂移**（临时从 fixture 删除 `Category.key`）：
+```
+FAIL: test_fixture_matches_api_spec
+  fixture 与 api-spec 不一致（Category）：fixture-only=[] spec-only=['key']
+FAIL: test_fixture_schema_is_complete（Category 必须含 key）
+FAILED (failures=3)
+# 恢复 fixture 后：OK
+```
+
+#### 修复后验证
+
+| 项 | 结果 |
+|---|---|
+| unittest（正常目录） | **Ran 76 tests … OK**，skip = 0 |
+| unittest（无 artifacts 副本） | **Ran 76 tests … OK**，skip = 0 |
+| fixture ↔ api-spec | 交叉校验通过（不一致即 fail） |
+| `verify --deep` | **7/7 PASS** |
+| `node --check app.js` | exit 0 |
+| 行数 | 无文件 >500；`test_web_contract.py` 291 行、fixture 85 行 |
+| 用户数据 | 全程 `--data-dir`/临时副本，未触碰 `~/.fasti` |
 
