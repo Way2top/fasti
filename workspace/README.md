@@ -66,7 +66,7 @@ fasti --help
 | 第三方包 | **无**。不 `pip install` 任何依赖；全程无网络调用 |
 | 文件锁 | `flock`（macOS/Linux）；NFS 等不支持 `flock` 的文件系统不保证（ADR-015） |
 
-依赖自检：`python3 -m unittest discover -s tests -v`（**93 个用例**：v3 时间语义（三档输入/auto-bump/自适应显示/`--at` 桶起点）、UUIDv7/短前缀/格式门/类别复活/持久化守卫 + 写路径原子性 + 前端字段契约守卫（fixture 快照，无 artifacts 也可执行） + v2→v3 迁移脚本/强回归 + 分层/确定性/导出导入/CLI/网页/静态资源守卫，含「禁止 import UI 模块 / 禁止 print / 禁止第三方依赖」的分层断言）。
+依赖自检：`python3 -m unittest discover -s tests -v`（**115 个用例**：C-08 相似检测（两级规则/真实重复对/令牌绑定/审计）+ v3 时间语义、UUIDv7/短前缀/格式门/类别复活/持久化守卫 + 写路径原子性 + 前端字段契约 + v2→v3 迁移强回归 + 分层/确定性/导出导入/CLI/网页/静态资源守卫，含「禁止 import UI 模块 / 禁止 print / 禁止第三方依赖」的分层断言）。
 
 ---
 
@@ -102,7 +102,7 @@ workspace/
 │   │   ├── importer.py             # 全量校验 + 原子替换 + 显式覆盖 + 自动备份
 │   │   ├── status.py               # 新鲜度/外部篡改/宿主接入状态
 │   │   ├── install.py              # install_hosts（全局位置 / Cursor 降级）
-│   │   ├── ids.py clock.py errors.py constants.py
+│   │   ├── ids.py clock.py errors.py constants.py similarity.py
 │   │   ├── templates/categories.json        # 7 个默认模板类别（随包只读）
 │   │   └── schema/database-schema.sql       # 与 artifacts/database-schema.sql 逐字节相同的副本
 │   └── adapters/                   # 界面适配层（只调用 fasti.core.api；ADR-022）
@@ -114,12 +114,12 @@ workspace/
 │       ├── web.py                  # 本机网页表单后端（127.0.0.1 + 令牌 + Origin/Host 校验）
 │       ├── static_files.py         # 同源静态资源白名单（3 条只读路由）
 │       └── web_static/             # index.html + style.css + app.js（零外部请求）
-├── tests/                          # _base.py + 16 个 test_*.py + fixtures/*.json（93 个用例）
+├── tests/                          # _base.py + 18 个 test_*.py + fixtures/*.json（115 个用例）
 └── scripts/                        # 一次性迁移工具（stdlib、离线，不随产品命令暴露）
     └── migrate_v2_to_v3.py         # v2→v3 事件改写器（--dry-run/原子写回/幂等）
 ```
 
-**为什么 `core/schema/database-schema.sql` 有一份副本**：`verify` 的 `sql.constraints` 检查与导入流水线第 4 步需要把折叠结果载入内存 SQLite 执行同一份 DDL。该文件是从 `artifacts/database-schema.sql` **逐字节复制**的只读副本（schema_version 3，sha256 `d11fbac631657cb375302a9cce6296cde3024bb3421032fe0749420481b02a61`），便于离线运行；`artifacts/` 未被修改。也可用环境变量 `FASTI_SCHEMA_PATH` 指向其他 DDL。
+**为什么 `core/schema/database-schema.sql` 有一份副本**：`verify` 的 `sql.constraints` 检查与导入流水线第 4 步需要把折叠结果载入内存 SQLite 执行同一份 DDL。该文件是从 `artifacts/database-schema.sql` **逐字节复制**的只读副本（schema_version 3，sha256 `944f85899f8407a1d27d7aafda3a82f2a027886736c68ecdba9f00ae6c877e9b`；含 C-08 `fact.duplicate_confirmation`），便于离线运行；`artifacts/` 未被修改。也可用环境变量 `FASTI_SCHEMA_PATH` 指向其他 DDL。
 
 ---
 
@@ -275,7 +275,7 @@ python3 run.py profile at --at 2026-11-09T23:50   # 可区分同月内多段
 
 ### 9.3 格式版本与迁移（ADR-024 / ADR-026）
 
-- 事件与导出 `format_version: 3`；读取模型 DDL `schema_version: 3`；`contract_version = 1.3.0`。
+- 事件与导出 `format_version: 3`；读取模型 DDL `schema_version: 3`；`contract_version = 1.4.0`。
 - **不向后兼容**：
   - v1/v2 数据目录 ⇒ `STORE_FORMAT_UNSUPPORTED`（退出码 5，消息指向 architecture.md §13.5 与迁移脚本）；
   - v1/v2 导出 bundle ⇒ `IMPORT_UNSUPPORTED_FORMAT_VERSION`（退出码 4）。
@@ -290,10 +290,42 @@ python3 run.py profile at --at 2026-11-09T23:50   # 可区分同月内多段
 
 ---
 
+### 9.4 防重复（C-08，A 预防 + B 拦截，contract 1.4.0）
+
+- **A（纯前端，零后端改动）**：网页「新增事实」选定类别后，复用
+  `GET /api/facts?category=<key>&state=current` 实时展示该类别当前有效事实；点击条目切换到
+  「修订事实」并预填 fact_id/content/类别；无事实时隐藏区块，切类别实时刷新。
+- **B（服务端强制拦截，仅 `fact.add`）**：与「同类别 + 当前有效事实（每条 line 的 head）」比对：
+  - **Tier1**：unigram+bigram Dice ≥ `0.60`（归一化 NFKC→小写→仅保留 `isalnum()` 与 `+`/`#`）；
+  - **Tier2**：sim ≥ `0.25` 且共享 ASCII 实体词（`[a-z][a-z0-9+#]*`，长度≥2）≥ 2；
+  - 命中未确认 ⇒ `CONFLICT_SIMILAR_FACT`（CLI exit 5 / HTTP 409），`details` 含候选（带
+    `shared_entities`）与 22 字符 stateless `confirm_token`；**不追加事件**。
+- **确认令牌**：`base64url(sha256(canonical_json({v, operation, category_key, content,
+  candidates 升序, algorithm, 三阈值}))[:16])`；CLI `--confirm-duplicate <TOKEN>`、网页
+  `confirm_token`。内容/类别/候选集变化 ⇒ `VALIDATION_INVALID_CONFIRM_TOKEN`（exit 4 / 400）。
+- **审计**：确认成功后 `fact_created.duplicate_confirmation{confirmed, candidates,
+  max_similarity, token_sha256}` 落事件 → 读模型 `fact.duplicate_confirmation` →
+  `profile.history`「↳ 重复确认：与 <候选短ID> 相似（sim）后新增」、`fact.show` 同、导出
+  `data/entities.jsonl` 可审计；不参与排序/画像/区间。
+- **不做**：`fact.change` 不检测（AC-15-2 无确认循环）；不跨类别、不查历史旧段（AC-15-7）；
+  不做自动合并/手工合并入口（P1）。
+- 阈值/算法为固定常量（`constants.SIMILARITY_*`），不提供配置项；算法变更必须重跑
+  architecture §14.3 标定表。
+
+```bash
+# 命中未确认（exit 5，不写事件；stderr 列候选与令牌）
+python3 run.py fact add --category tech --content "主力语言是C++" --valid-from 2026-12
+# 确认新增（exit 0；事件/历史/导出留审计痕迹）
+python3 run.py fact add --category tech --content "主力语言是C++" --valid-from 2026-12 \
+        --confirm-duplicate <TOKEN>
+```
+
+---
+
 ## 10. 验证方式
 
 ```bash
-# A. 自动化自测（93 个用例；含 v3 时间语义/auto-bump/自适应显示/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约 + 分层/确定性/导出导入/CLI/网页/静态资源）
+# A. 自动化自测（115 个用例；含 C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约 + 分层/确定性/导出导入/CLI/网页/静态资源）
 python3 -m unittest discover -s tests -v
 
 # B. 端到端自检（存储不变量 + 内存 SQLite 约束 + 确定性 + 三产物一致 + 导出导入往返）
@@ -315,15 +347,15 @@ python3 run.py --data-dir "$T" verify --deep && echo SMOKE-OK
 
 ## 11. 文件规模预算（ADR-021）
 
-`workspace/` 下所有 `.py` / `.html` / `.css` / `.js` 文件均 **≤500 行**（实测最大 469 行，共 57 个文件 / 8675 行）；
+`workspace/` 下所有 `.py` / `.html` / `.css` / `.js` 文件均 **≤500 行**（实测最大 479 行，共 62 个文件 / 9564 行）；
 本次拆分新增文件**目标 ≤300 行**，仅两个已在 ADR-021 登记的豁免文件超目标：
 
 | 文件 | 行数 | 状态 |
 |---|---|---|
-| `fasti/adapters/web.py` | 469 | 存量文件 + 静态路由；ADR-021 目标豁免（<500） |
-| `fasti/core/fold.py` / `profile.py` / `store.py` | 377 / 346 / 329 | 存量登记（未超硬上限）；v3 增加时间戳/瞬间校验 |
-| `fasti/adapters/web_static/app.js` | 352 | 单个 IIFE 共享闭包状态；ADR-021 目标豁免（<500） |
-| 其余全部源码 / 静态资源 | ≤300 | 达标（含 `clock.py 261`、`scripts/migrate_v2_to_v3.py 210`、`export.py`、`services/facts.py`、`ids.py`、`api.py` 门面） |
+| `fasti/adapters/web.py` | 470 | 存量文件 + 静态路由；ADR-021 目标豁免（<500） |
+| `fasti/core/fold.py` / `profile.py` / `store.py` | 407 / 353 / 329 | 存量登记（未超硬上限）；v3 时间戳 + C-08 审计字段 |
+| `fasti/adapters/web_static/app.js` | 479 | 单个 IIFE 共享闭包状态；C-08 A/弹窗后仍 <500（ADR-021 目标豁免） |
+| 其余全部源码 / 静态资源 | ≤300 | 达标（含 `web.py 470` 外的 `clock.py 261`、`similarity.py 158`、`scripts/migrate_v2_to_v3.py 210`、`api.py` 门面） |
 
 规模治理的逐文件迁移映射、AST 等价验证、golden 基线方法与逐 commit 证据见
 `artifacts/architecture.md` §11 与 [`SELFTEST.md`](SELFTEST.md) §8。

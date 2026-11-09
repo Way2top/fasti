@@ -87,8 +87,8 @@
 | ST-48 | AC-13-1~13-5（防呆） | `node --check fasti/adapters/web_static/app.js` + 断言 IIFE 首尾行 | 修复 R-F1 后 **exit 0**（修复前 `SyntaxError: Unexpected token '}'`，exit 1）；断言首行 `(function () {`、次行 `"use strict";`、倒数第二行 `})();` | ✅ |
 | ST-49 | 静态资源完整性（防呆） | 检查 `web_static/` 三文件存在/非空/单末尾 LF、`index.html` 仅同源引用、零外部 URL、与基线内联内容 sha256 一致 | 全部通过；`app.js` 内容 sha256 `0fb916a6…`、`style.css` 内容 sha256 `d6e0c406…` 与 `git show refactor-baseline:…/index.html` 的内联内容**逐字节相同** | ✅ |
 
-**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **93 条自动化用例**（v3 时间语义/auto-bump/自适应显示/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约 fixture 等，见 §9/§10）；无失败项。
-自动化测试：`Ran 93 tests … OK`（见 §4.1 与 §10）。
+**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **115 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
+自动化测试：`Ran 115 tests … OK`（见 §4.1 与 §11）。
 > 注：下表 ST-01~ST-47 中出现的 `fact-0001` / `line-0001` / `cat-0002` 为 **v1（序号方案）历史记录**；C-06 迁移后同一行为以 UUIDv7 + 短前缀复现，见 §9。
 
 ---
@@ -99,9 +99,9 @@
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests -v
-…（93 个用例，全 ok）
+…（115 个用例，全 ok）
 ----------------------------------------------------------------------
-Ran 93 tests in 1.009s
+Ran 115 tests in 1.257s
 
 OK
 ```
@@ -308,11 +308,11 @@ python3 -V                     # 期望 3.9+（实测 3.13.3）
 python3 -c "import sqlite3; print(sqlite3.sqlite_version)"   # 期望 >= 3.38（需 JSON1）
 ```
 
-### 4.1 一键自动化（覆盖 v3 时间语义/auto-bump/自适应显示/迁移强回归 + v2 标识/短前缀/格式门/类别复活/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，93 用例）
+### 4.1 一键自动化（覆盖 C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + v2 标识/短前缀/格式门/类别复活/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，115 用例）
 
 ```bash
 python3 -m unittest discover -s tests -v
-# 期望最后三行：Ran 93 tests in … / OK
+# 期望最后三行：Ran 115 tests in … / OK
 ```
 
 ### 4.2 端到端手工场景（照抄命令，对比输出）
@@ -459,7 +459,7 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 
 - 全部实现位于 `workspace/`，入口 `python3 run.py …`（或安装后的 `fasti …`）。
 - 运行方式与命令速览见 [`README.md`](README.md)。
-- 自测统计：**自动化 93/93 通过（见 §10；无 artifacts 环境同样 0 skip 全绿）；手工/端到端 49 条用例中 47 条完全通过、2 条「核心语义通过 + 真实环境待验」、0 失败**。
+- 自测统计：**自动化 115/115 通过（见 §11；无 artifacts 环境同样 0 skip 全绿）；手工/端到端 49 条用例中 47 条完全通过、2 条「核心语义通过 + 真实环境待验」、0 失败**。
 - **等待 QA 独立验证**：以上「完成」仅为开发侧自测结论，不代表项目验收通过；QA 应按 `artifacts/product-spec.md` 的 59 条 AC 独立复现并给出 `pass` / `fail` 判定。
 
 ---
@@ -670,7 +670,11 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 | 9 | `526975a` | README / SELFTEST 同步（§9.10 fixture 方案、无 artifacts 实测、两次 red-check、fixture 漂移校验） |
 | 10 | **`0108486`** | **C-07 v3 实现**：秒级生效时间（三档输入/auto-bump/自适应显示/瞬间比较/`--at` 桶起点）、format_version 3 / schema_version 3 / contract_version 1.3.0、格式门 v1/v2、CLI/网页/导出适配（76 → 88） |
 | 11 | **`537beb9`** | **v2→v3 迁移脚本**：`scripts/migrate_v2_to_v3.py`（dry-run/原子/幂等/严格递增校验）+ 强回归测试（88 → 93） |
-| 12 | 本文件 commit | README / SELFTEST 同步（§10 C-07 证据：三档输入/auto-bump/自适应显示/迁移 dry-run/强回归） |
+| 12 | `6033d0c` | README / SELFTEST 同步（§10 C-07 证据：三档输入/auto-bump/自适应显示/迁移 dry-run/强回归） |
+| 13 | **`f34bb18`** | **C-08 相似检测核心**：`core/similarity.py`（两级规则/归一化/实体词/find_similar/stateless 令牌）+ 阈值常量 + 两个错误码 + `test_similarity.py`（93 → 103） |
+| 14 | **`2b9bc34`** | **C-08 服务端 B**：`fact.add` 检测/令牌校验/不落盘、事件+读模型 `duplicate_confirmation`、schema 同步、history/show/导出审计、CLI `--confirm-duplicate`、web `confirm_token`/409；`test_duplicate_conflict.py`（103 → 115） |
+| 15 | **`ba2aa2e`** | **C-08 前端 A**：类别当前有效事实列表 + 409 弹窗（改成演进/纠正/确认新增）+ fixture/契约测试同步 |
+| 16 | 本文件 commit | README / SELFTEST 同步（§11 C-08 证据：真实 Tier2、CLI/HTTP 双路 AC-15-4/5、审计/导出） |
 | 8 | 本文件 commit | README / SELFTEST 同步（§9.9 前端字段契约修复证据；用例 75） |
 
 ### 9.3 自动化测试（76 用例时点记录；C-07 后为 93 用例，见 §10）
@@ -1039,12 +1043,12 @@ FAILED (failures=3)
 | 格式版本 | `format_version 3` / `schema_version 3` / `contract_version 1.3.0`；v1/v2 不向后兼容 | `constants`、`_shared`/`importer` 格式门、包内 DDL 逐字节同步 |
 | 迁移 | `scripts/migrate_v2_to_v3.py`：v2 月值→月起点+事件偏移、format→3、原子写回、幂等、dry-run | 见 §10.5 |
 
-### 10.2 测试（76 → **93**，全绿）
+### 10.2 测试（C-07 时点 76 → 93；C-08 后全量 115，见 §11）
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests
 Ran 93 tests in 1.009s
-OK
+OK      # C-07 时点；C-08 后为 115（见 §11）
 ```
 
 新增/重写覆盖（除既有 76 条按 v3 更新外）：
@@ -1151,8 +1155,7 @@ $ python3 scripts/migrate_v2_to_v3.py --data-dir /tmp/fasti-v2-copy
    这是 ADR-025 的裁决（同桶冲突优先接受），请在验收时按 §13.3 场景核对。
 2. **时区假设（AS-21）**：生效时间按本机偏移解释/存储，跨时区后「墙钟显示不变、瞬间边界偏移」；单机自用可接受。
 3. **不向后兼容**：v3 代码拒绝 v1/v2 数据（显式错误 + 迁移指引），没有自动降级；回退靠迁移前备份。
-4. **C-08（相似事实确认）未在本轮实现**：spec v1.3.0 与 C-07 合并发布（`format_version` 仍 3），
-   `CONFLICT_SIMILAR_FACT`/`confirm_token`/`duplicate_confirmation` 属另一任务；本轮只做 C-07。
+4. **C-08（相似事实确认）已在后续任务实现**（同 format_version 3 / contract 1.4.0），见 §11；C-07 交付时点为未实现。
 5. **用户真实数据未迁移**：本轮未触碰 `~/.fasti`（仍为 v2），迁移脚本已交付但由 Lead 执行；
    迁移前 v3 CLI 对真实目录会按预期返回 `STORE_FORMAT_UNSUPPORTED`。
 
@@ -1172,3 +1175,143 @@ $ python3 scripts/migrate_v2_to_v3.py --data-dir /tmp/fasti-v2-copy
 - 本轮**未写入用户 `~/.fasti`**（所有验证用 `--data-dir` 临时目录/副本）；真实迁移由 Lead 执行。
 - **等待 QA 独立验证**：重点核对 §10.3 三档输入/auto-bump/自适应显示、§10.4 `verify --deep` 7/7、
   §10.5 迁移 dry-run 与强回归，以及 §10.6 的 auto-bump 隐式写入提示是否满足 AS-20。
+
+---
+
+## 11. C-08 变更（防重复 A+B：相似检测 + 显式确认）· 2026-11
+
+> 依据：`artifacts/architecture.md` **ADR-027 / §14**、`api-spec.yaml` `conventions.similarity`（contract **1.4.0**）、
+> product-spec v4 **US-14（AC-14-1~4）/ US-15（AC-15-1~7）**、`database-schema.sql` `fact.duplicate_confirmation`。
+> **格式合并**：事件/导出 `format_version` 仍为 **3**、DDL `schema_version` 仍为 **3**（C-07+C-08 一次升级，不升 4）。
+
+### 11.1 实现落点
+
+| 层 | 实现 |
+|---|---|
+| 算法 | `core/similarity.py`：NFKC→小写→保留 `isalnum()` 与 `+`/`#`；Tier1 = 0.5·Dice(unigram)+0.5·Dice(bigram) ≥0.60；Tier2 = sim≥0.25 且共享 ASCII 实体词（`[a-z][a-z0-9+#]*`，≥2）≥2；`find_similar` 仅同类别当前 head、候选 sim 降序/fact_id 升序、最多 5 |
+| B 拦截 | `services/facts.add_fact(..., confirm_token)`：valid_from 归一后、追加事件前检测；命中未确认 ⇒ `CONFLICT_SIMILAR_FACT`(5)/409，details 含 `candidates`（+`shared_entities`）与 `confirm_token`，**不追加事件**；`change_fact` 不检测（AC-15-2 无循环） |
+| 令牌 | `base64url(sha256(canonical_json({v:1,operation:"fact.add",category_key,content,candidates 升序,algorithm:"ngram-entity-v2",high_threshold:0.60,topic_threshold:0.25,min_shared_tokens:2}))[:16])` = 22 字符；内容/类别/候选变化 ⇒ `VALIDATION_INVALID_CONFIRM_TOKEN`(4)/400 |
+| 审计 | `fact_created.duplicate_confirmation{confirmed,candidates,max_similarity,token_sha256}` → 读模型 `fact.duplicate_confirmation` → history「↳ 重复确认：与 <候选短ID> 相似（sim）后新增」、`fact.show` 同、导出 `data/entities.jsonl`；不参与排序/画像/区间 |
+| 格式 | `format_version` 3 / `schema_version` 3 不变；包内 schema 逐字节同步 artifacts（sha256 `944f85899f…`）；contract 1.4.0；`constants.SIMILARITY_*` 固定常量（无配置项） |
+| A 预防 | 纯前端：`index.html` 增加 `existing-facts` 区块；`app.js` 选定类别后 `GET /api/facts?category=<key>&state=current` 渲染，点击条目切「修订事实」预填 fact_id/content/类别；空列表隐藏、切类别刷新；**无新增后端端点** |
+| B 弹窗 | 409 ⇒ `dup-modal` 列候选（相似度/内容/短 ID），提供「改成演进」「改成纠正」（预填 change 模式）与「确认这确实是新增」（带 `confirm_token` 重发） |
+| CLI | `fact add --confirm-duplicate <TOKEN>`；CONFLICT 在 stderr 列候选与令牌；`--json` 错误 details 完整 |
+| Web | `POST /api/facts` 接受 `confirm_token`；`CONFLICT_*`⇒409、`VALIDATION_*`⇒400（既有映射）；响应 fact 含审计字段 |
+
+### 11.2 测试（93 → **115**，全绿）
+
+```
+$ cd workspace && python3 -m unittest discover -s tests
+Ran 115 tests in 1.257s
+OK
+```
+
+新增：
+- `test_similarity.py`（10）：真实全量重复对 **sim=0.307 + 共享 python/c++ ⇒ Tier2 命中**（截断版 0.519 亦命中）、
+  Tier1 0.851、单实体负例、0 实体负例、NFKC/符号保留、实体词定义、令牌格式/绑定/候选顺序不变性、
+  `find_similar` 范围（跨类别、历史旧段、排序、cap 5）。
+- `test_duplicate_conflict.py`（12）：AC-15-4 无令牌拒绝且 events 字节不变；AC-15-5 带令牌成功 +
+  审计（事件/读模型/历史/导出）；换内容/换类别令牌失效；AC-15-6 明显不同静默创建；
+  AC-15-7 跨类别/历史旧段不触发；change 不触发；事件 schema 畸形审计字段被拒；
+  **CLI 与 HTTP 双路**（409/200/400、`--confirm-duplicate`、confirm_token）。
+- 静态守卫：`test_cli_web` 断言 A 区块/端点复用/弹窗/确认令牌文案；`test_web_contract`
+  fixture 新增 `SimilarityCandidate`/`ConflictDetails`（field/candidates/confirm_token）并扫描
+  `candidate./details.` 访问；`Fact.duplicate_confirmation` 已在 fixture 中。
+
+### 11.3 真实案例 Tier2 命中（实际执行）
+
+```bash
+$ fasti fact add --category tech --content "最熟悉的还是Python，但是工作所需，现在需要主力使用C++了。" --valid-from 2026-11
+$ fasti --json fact add --category tech \
+    --content "最熟悉的语言是Python，但是目前工作需要使用C++。Django和Flask都有一定了解，但不深入。数据库了解MySql，Redis了解但未使用过。AI相关，使用Langchain开发过一个GaoKaoAgent。" \
+    --valid-from 2026-12
+{"error": {"code": "CONFLICT_SIMILAR_FACT",
+  "details": {"candidates": [{"fact_id": "01a1c125-…", "content": "最熟悉的还是Python…",
+                              "similarity": 0.307, "shared_entities": ["c++", "python"]}],
+              "confirm_token": "ypagRlSqe1UV7qyEKbdoMA"}}}
+```
+- 与 ADR-027 §14.3 标定一致：**sim=0.307、共享 python/c++ ⇒ Tier2 命中**（此前 0.60 单阈值会漏报）。
+
+### 11.4 AC-15-4 / AC-15-5 服务端拦截实测（CLI + HTTP 两路）
+
+**CLI（无令牌 ⇒ exit 5，不落盘；带令牌 ⇒ 成功 + 审计；换内容复用 ⇒ exit 4）**
+```
+$ fasti fact add --category tech --content "最熟悉的语言是Python…" --valid-from 2026-12
+错误 CONFLICT_SIMILAR_FACT：检测到相似记录（最高相似度 0.307）：…；确认新增请携带确认令牌重试
+  候选 fact 01a1c125-4285-78c1-a4dc-cd1a9147863f（相似度 0.307）：最熟悉的还是Python…
+  确认新增请重试并追加：--confirm-duplicate ypagRlSqe1UV7qyEKbdoMA
+exit = 5；events 未变化 = YES
+$ fasti fact add --category tech --content "最熟悉的语言是Python…" --valid-from 2026-12 --confirm-duplicate ypagRlSqe1UV7qyEKbdoMA
+已录入 fact 01a1c125…；exit = 0
+$ fasti profile history | grep 重复确认
+  ↳ 重复确认：与 01a1c1254285 相似（0.307）后新增
+$ fasti fact show <新fact> | grep 重复确认
+重复确认：与 01a1c1254285 相似后新增
+$ fasti fact add … --content "主力语言是Java" --confirm-duplicate ypagRlSqe1UV7qyEKbdoMA
+错误 VALIDATION_INVALID_CONFIRM_TOKEN：确认令牌已失效（内容/类别/候选集已变化）…；exit = 4
+```
+
+**HTTP（POST /api/facts）**
+```
+A: GET /api/facts?category=tech&state=current -> HTTP 200, 1 条当前有效事实
+无 confirm_token  -> HTTP 409, code=CONFLICT_SIMILAR_FACT
+                    details.candidates=[{fact_id, similarity:0.851, shared_entities:["c++"]}]
+                    details.confirm_token="ZFZ8jf663wLdPPIO7yLYqw"；events 字节未变化=True
+带 confirm_token  -> HTTP 200, fact.duplicate_confirmation={confirmed:true, candidates:[…],
+                    max_similarity:0.851, token_sha256:"64567c8d…"}
+换内容复用令牌    -> HTTP 400, code=VALIDATION_INVALID_CONFIRM_TOKEN
+```
+
+**导出审计**（确认成功后）：
+```
+data/entities.jsonl → fact 行 duplicate_confirmation =
+{"candidates": ["01a1c125-4285-78c1-a4dc-cd1a9147863f"], "confirmed": true,
+ "max_similarity": 0.307, "token_sha256": "ca96a046…"}
+data/events.jsonl   → fact_created 事件原样携带同字段；导入后读模型保留（不参与排序/画像）
+```
+
+### 11.5 A（预防，纯前端）验证
+
+- 后端无新增端点：仍使用既有 `GET /api/facts?category=<key>&state=current`（同 v3 契约）；
+- 静态守卫断言：`index.html` 含 `existing-facts-list`、`dup-modal`、两个弹窗选项；
+  `app.js` 含 `refreshExistingFacts`、`?category=` + `&state=current`、`CONFLICT_SIMILAR_FACT`、`confirm_token`；
+  `node --check app.js` exit 0（479 行 ≤500）；页面仍零外部请求；
+- 空列表隐藏区块 / 类别切换重新请求 / 点击条目切 change 模式并预填（源码逻辑，浏览器 DOM 交互需 QA 人工确认）。
+
+### 11.6 端到端与静态检查
+
+```bash
+$ python3 run.py verify --deep
+CHECK … 7/7 PASS（store.load/invariants/sql.constraints/determinism/consistency/freshness/export.roundtrip）
+结论：通过
+$ node --check fasti/adapters/web_static/app.js    # exit 0
+$ python3 -m compileall -q fasti scripts           # OK
+行数：62 文件 / 9564 行；无文件 >500（web.py 470 / app.js 479 为 ADR-021 存量豁免）
+```
+
+### 11.7 风险与边界（R-08 / AS-23 / AS-24，与 ADR-027 一致）
+
+1. **漏报边界**：仅 1 个共享 ASCII 实体词的改写、纯中文改写且字面差异大、归一化后 <2 字符的内容可能漏报；
+   此时由 **A 列表（预防）** 兜底，B 只保证「措辞接近」与「同现实体词 ≥2」两类。
+2. **误报**：高字面相似（如 `C++` vs `C#`）会触发确认；弹窗提供「改成演进/纠正」出口，属可接受代价。
+3. **stateless 令牌**：同一内容可重放（再次确认）；不同内容/类别/候选集不可复用（AC-15-5 实测两路）。
+4. **不自动合并、不提供手工合并入口**（P1）。
+5. **未在浏览器 DOM 级自动化** A 列表/弹窗交互（无浏览器自动化能力）：以静态守卫 + HTTP 双路 + 手工步骤替代；
+   建议 QA 按 §14.10 人工确认 AC-14-1~4 / AC-15-1~3 的页面交互。
+6. **用户真实数据未触碰**：全部测试用 `--data-dir` 临时目录；`~/.fasti`（v2）迁移仍由 Lead 执行 C-07 脚本。
+
+### 11.8 未覆盖项
+
+| 项 | 原因 | 替代验证 |
+|---|---|---|
+| 浏览器内 A 列表点击/弹窗交互 | 无浏览器自动化 | 静态守卫（HTML/JS 结构+文案）、HTTP 409/200/400 实测、QA 人工流程 |
+| 真实用户数据上的相似检测 | 未触碰 `~/.fasti`（v2） | 用用户真实两条内容（全量 A/B）在临时 store 复现 Tier2 0.307 |
+| 跨设备/并发确认重放 | 单机自用（AS-24） | stateless 令牌语义单测 + 两路实测 |
+| 阈值长期误报/漏报观察 | 4 周观察期（AS-23） | 标定对子全量单测；变更需重跑 §14.3 |
+
+### 11.9 交付声明
+
+- 全部实现位于 `workspace/`；`artifacts/`、`briefs/` 未修改；**format_version 保持 3、schema_version 保持 3**。
+- 未写入用户 `~/.fasti`（所有验证用 `--data-dir` 临时目录）。
+- **等待 QA 独立验证**：重点 AC-15-4/15-5（CLI+HTTP 双路，见 §11.4）、审计可见性（§11.4 导出/历史/show）、
+  AC-14 页面交互（§11.5）与 AC-15-6/15-7（静默/范围）。
