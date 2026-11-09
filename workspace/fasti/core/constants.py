@@ -16,7 +16,7 @@ L0_SPEC_NAME = "Open Memory Ledger (OML)"
 
 # --- 版本 -------------------------------------------------------------------
 APP_VERSION = "0.1.0"
-CONTRACT_VERSION = "1.1.0"
+CONTRACT_VERSION = "1.2.1"
 FORMAT_VERSION = 2
 MANIFEST_VERSION = 1
 BUNDLE_VERSION = 1

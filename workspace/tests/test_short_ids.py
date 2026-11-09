@@ -3,12 +3,12 @@
 import unittest
 
 from _base import BaseStoreTest, inject_ids, reset_ids
-from fasti.core import api, errors
+from fasti.core import api, errors, ids
 
 
 class TestShortIds(BaseStoreTest):
     def _create_spaced_facts(self):
-        """注入稀疏时钟，使各 fact 的 8 位前缀互不相同（UUIDv7 前 8 位 ≈ 65 秒窗口）。"""
+        """注入稀疏时钟（70s/UUID）：不同毫秒创建的 ID 前 12 位必不同（= 完整 48-bit 时间戳）。"""
         inject_ids(start_ms=1_700_000_000_000, step_ms=70_000)
         first = api.add_fact(self.data_dir, "tech", "主力语言：Python", "2025-01")
         second = api.add_fact(self.data_dir, "tech", "常用框架：Django", "2024-06")
@@ -17,10 +17,10 @@ class TestShortIds(BaseStoreTest):
     def test_unique_prefix_resolves(self):
         fact_ids = self._create_spaced_facts()
         for fact_id in fact_ids:
-            short = fact_id[:8]
+            short = ids.short_id(fact_id)
             detail = api.show_fact(self.data_dir, short)
             self.assertEqual(detail["fact"]["fact_id"], fact_id)
-            self.assertEqual(detail["fact"]["fact_id"][:8], short)
+            self.assertEqual(ids.short_id(detail["fact"]["fact_id"]), short)
         # 大写/带连字符/完整形式同样可解析
         self.assertEqual(api.show_fact(self.data_dir, fact_ids[0].upper())["fact"]["fact_id"],
                          fact_ids[0])
@@ -39,8 +39,8 @@ class TestShortIds(BaseStoreTest):
         details = ctx.exception.details
         self.assertGreaterEqual(len(details["candidates"]), 2)
         self.assertLessEqual(len(details["candidates"]), 10)
-        self.assertIn(first[:8], details["candidates"])
-        self.assertIn(second[:8], details["candidates"])
+        self.assertIn(ids.short_id(first), details["candidates"])
+        self.assertIn(ids.short_id(second), details["candidates"])
 
     def test_invalid_id_format(self):
         fact_id = api.add_fact(self.data_dir, "tech", "x", "2026-11")["fact"]["fact_id"]
@@ -50,7 +50,7 @@ class TestShortIds(BaseStoreTest):
                 api.show_fact(self.data_dir, value)
             self.assertEqual(ctx.exception.code, "VALIDATION_INVALID_ID", value)
             self.assertEqual(ctx.exception.exit_code, 4)
-        self.assertEqual(api.show_fact(self.data_dir, fact_id[:8])["fact"]["fact_id"],
+        self.assertEqual(api.show_fact(self.data_dir, ids.short_id(fact_id))["fact"]["fact_id"],
                          fact_id)
 
     def test_not_found_prefix(self):
@@ -66,7 +66,7 @@ class TestShortIds(BaseStoreTest):
     def test_line_filter_by_short_prefix(self):
         created = api.add_fact(self.data_dir, "tech", "x", "2026-11")
         line_id = created["line"]["line_id"]
-        items = api.list_facts(self.data_dir, None, line_id[:8], "current")["items"]
+        items = api.list_facts(self.data_dir, None, ids.short_id(line_id), "current")["items"]
         self.assertEqual([fact["fact_id"] for fact in items], [created["fact"]["fact_id"]])
 
 

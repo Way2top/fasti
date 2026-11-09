@@ -70,15 +70,15 @@ class TestCliAndWeb(unittest.TestCase):
         added = self._run("fact", "add", "--category", "tech", "--content", "主力语言：C++",
                           "--valid-from", "2026-11")
         self.assertEqual(added.returncode, 0)
-        self.assertRegex(added.stdout, r"已录入 fact [0-9a-f]{8}（line [0-9a-f]{8} · 技术背景")
-        short = re.search(r"已录入 fact ([0-9a-f]{8})", added.stdout).group(1)
+        self.assertRegex(added.stdout, r"已录入 fact [0-9a-f]{12}（line [0-9a-f]{12} · 技术背景")
+        short = re.search(r"已录入 fact ([0-9a-f]{12})", added.stdout).group(1)
         # text 输出显示短 ID；--json 输出完整 UUIDv7
         as_json = self._run("--json", "fact", "show", short)
         self.assertEqual(as_json.returncode, 0)
         payload = json.loads(as_json.stdout)
         fact_id = payload["data"]["fact"]["fact_id"]
         self.assertRegex(fact_id, UUID7_RE)
-        self.assertEqual(fact_id[:8], short)
+        self.assertEqual(api.short_id(fact_id), short)
         # 完整形式同样可作入参
         self.assertEqual(self._run("fact", "show", fact_id).returncode, 0)
 
@@ -117,7 +117,7 @@ class TestCliAndWeb(unittest.TestCase):
             fact_id = created["data"]["fact"]["fact_id"]
             self.assertRegex(fact_id, UUID7_RE)
             # 网页 API 返回完整 UUIDv7；短前缀作为路径参数同样可解析
-            short = fact_id[:8]
+            short = api.short_id(fact_id)
             status, changed = fetch("/api/facts/%s/change" % short, "POST",
                                     {"change_type": "correct",
                                      "content": "主力语言：Java"})

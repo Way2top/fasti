@@ -4,7 +4,8 @@
   与任何第三方包（uuid6 / ulid-py 等）。
 - 同毫秒内 `rand_a` 单调递增（RFC 9562 §6.2 Method 1）；12-bit 溢出则等到下一毫秒。
 - 规范形式：小写、带连字符 36 字符；持久化/事件/导出/`--json` 只用规范形式。
-- 短 ID：32 位十六进制的第 1–8 位，仅用于 CLI/交互显示与输入。
+- 短 ID：32 位十六进制的第 1–12 位（= 完整 48-bit 毫秒时间戳，不同毫秒创建的 ID
+  前缀必不同），仅用于 CLI/交互显示与输入；持久化/导出/`--json` 只用规范形式。
 
 测试接缝：`set_generator()` 可注入固定 clock / random 源的 `Uuid7Generator`。
 """
@@ -19,7 +20,8 @@ from . import errors
 UUID7_CANONICAL_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
 )
-SHORT_ID_RE = re.compile(r"^[0-9a-f]{8}$")
+SHORT_ID_LEN = 12          # 默认短 ID 位数 = 完整 48-bit 毫秒时间戳（12 个十六进制字符）
+SHORT_ID_RE = re.compile(r"^[0-9a-f]{%d}$" % SHORT_ID_LEN)
 _HEX_RE = re.compile(r"^[0-9a-f]+$")
 SHORT_PREFIX_MIN = 4
 SHORT_PREFIX_MAX = 32
@@ -105,7 +107,7 @@ def reset_generator():
 
 
 def auto_category_key():
-    """自定义类别省略 key 时的自动 key：c-<UUIDv7 前 8 位十六进制>。"""
+    """自定义类别省略 key 时的自动 key：c-<UUIDv7 前 12 位十六进制>（如 c-0190a1b23c4d）。"""
     return _AUTO_KEY_PREFIX + short_id(new_uuid7())
 
 
@@ -119,10 +121,10 @@ def hex32(value):
 
 
 def short_id(value):
-    """短 ID = 32 位十六进制的第 1–8 位（仅用于显示）。"""
+    """短 ID = 32 位十六进制的第 1–12 位（默认显示长度，仅用于显示/输入）。"""
     if not value:
         return value
-    return hex32(value)[:8]
+    return hex32(value)[:SHORT_ID_LEN]
 
 
 def normalize_reference(value, field="fact_id"):

@@ -92,8 +92,8 @@ def reset_ids():
 
 class BaseStoreTest(unittest.TestCase):
     def setUp(self):
-        # 注入稀疏时钟：每个 UUID 间隔 70s（> UUIDv7 前 8 位变化的 65.5s 窗口），
-        # 使默认测试中的 8 位短前缀唯一；需要构造歧义的用例自行 inject_ids(step_ms=0)
+        # 注入稀疏时钟：每个 UUID 间隔 70s（不同毫秒），使 12 位短 ID（= 完整时间戳）
+        # 唯一；需要构造同毫秒歧义的用例自行 inject_ids(step_ms=0)
         inject_ids(step_ms=70_000)
         self.tmp = tempfile.mkdtemp(prefix="fasti-test-")
         self.data_dir = os.path.join(self.tmp, "store")

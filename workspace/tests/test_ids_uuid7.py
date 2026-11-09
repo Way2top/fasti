@@ -77,11 +77,14 @@ class TestUuid7Generator(unittest.TestCase):
 
     def test_short_id_and_auto_category_key(self):
         value = "0190a1b2-3c4d-7e5f-8a9b-0c1d2e3f4a5b"
-        self.assertEqual(ids.short_id(value), "0190a1b2")
+        self.assertEqual(ids.short_id(value), "0190a1b23c4d")
+        self.assertTrue(ids.SHORT_ID_RE.match("0190a1b23c4d"))
+        self.assertFalse(ids.SHORT_ID_RE.match("0190a1b2"))
         self.assertTrue(ids.is_uuid7(value))
         self.assertFalse(ids.is_uuid7("0190a1b2-3c4d-6e5f-8a9b-0c1d2e3f4a5b"))
         key = ids.auto_category_key()
-        self.assertRegex(key, r"^c-[0-9a-f]{8}$")
+        self.assertRegex(key, r"^c-[0-9a-f]{12}$")
+        self.assertEqual(len(key), 2 + ids.SHORT_ID_LEN)
 
 
 class TestReferenceParsing(unittest.TestCase):

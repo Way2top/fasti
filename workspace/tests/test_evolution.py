@@ -14,7 +14,7 @@ class TestEvolutionVsCorrection(BaseStoreTest):
         self.line_id = created["line"]["line_id"]
 
     def test_evolve_then_correct(self):
-        evolved = api.change_fact(self.data_dir, self.fact_id[:8], "evolve",
+        evolved = api.change_fact(self.data_dir, api.short_id(self.fact_id), "evolve",
                                   "主力语言：C++", "2026-11")
         self.assertEqual(evolved["change_type"], "evolve")
         new_fact = evolved["fact"]
@@ -25,7 +25,7 @@ class TestEvolutionVsCorrection(BaseStoreTest):
         self.assertEqual(new_fact["change_type"], "evolve")
 
         # 纠正只作用于旧段：区间不变、fact_id 不变、revision_seq + 1
-        corrected = api.change_fact(self.data_dir, self.fact_id[:8], "correct",
+        corrected = api.change_fact(self.data_dir, api.short_id(self.fact_id), "correct",
                                     "主力语言：Java", None, "2025-01~2026-10 实际是 Java")
         self.assertEqual(corrected["change_type"], "correct")
         self.assertEqual(corrected["fact"]["fact_id"], self.fact_id)
@@ -63,7 +63,7 @@ class TestEvolutionVsCorrection(BaseStoreTest):
                          "该时点无记录\n")
 
     def test_delete_fact_tombstone(self):
-        api.delete_fact(self.data_dir, self.fact_id[:8])
+        api.delete_fact(self.data_dir, api.short_id(self.fact_id))
         self.assertEqual(api.get_profile(self.data_dir)["items"], [])
         deleted = api.list_facts(self.data_dir, None, None, "deleted")["items"]
         self.assertEqual([fact["fact_id"] for fact in deleted], [self.fact_id])

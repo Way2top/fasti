@@ -10,7 +10,8 @@ class TestCategories(BaseStoreTest):
     def test_add_disable_enable_delete(self):
         added = api.add_category(self.data_dir, "家庭情况")
         key = added["category"]["key"]
-        self.assertTrue(key.startswith("c-"))                       # c-<UUIDv7 前8位>
+        self.assertTrue(key.startswith("c-"))                       # c-<UUIDv7 前12位>
+        self.assertRegex(key, r"^c-[0-9a-f]{12}$")          # 例：c-0190a1b23c4d
         self.assertEqual(added["category"]["origin"], "custom")
         self.assertIsNone(added["category"]["template_order"])
         api.add_fact(self.data_dir, "家庭情况", "有一个弟弟", "2026-01")

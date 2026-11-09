@@ -46,7 +46,7 @@ fasti import <bundle 目录>
 - `line_id` / `fact_id`：UUIDv7（RFC 9562，36 字符小写规范形式，时间有序）。
 - 类别身份：语义 `category_key`（无 `category_id`）。
 - 修订：无独立 ID，以 `(fact_id, seq)` 复合定位。
-- CLI text 显示的短 ID（前 8 位十六进制）**不会**写入本 bundle；本 bundle 内 ID 一律完整形式。
+- CLI text 显示的短 ID（默认前 12 位十六进制）**不会**写入本 bundle；本 bundle 内 ID 一律完整形式。
 
 ## OKF 对齐口径（方向对齐，不声称严格符合规范）
 

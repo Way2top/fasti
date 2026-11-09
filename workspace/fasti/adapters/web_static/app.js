@@ -189,7 +189,7 @@
         option.value = fact.fact_id;
         var categoryName = categoryNames[fact.category_key] || fact.category_key;
         var content = fact.content.length > 40 ? fact.content.slice(0, 40) + "…" : fact.content;
-        option.textContent = fact.fact_id.slice(0, 8) + " · " + categoryName + " · 自 " + fact.valid_from + " · " + content;
+        option.textContent = fact.fact_id.slice(0, 12) + " · " + categoryName + " · 自 " + fact.valid_from + " · " + content;
         select.appendChild(option);
       });
     });

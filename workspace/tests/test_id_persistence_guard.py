@@ -1,6 +1,6 @@
 """边界守卫（契约硬约束）：短 ID 不得出现在任何持久化/导出内容中。
 
-短 ID（UUIDv7 前 8 位十六进制）仅用于 CLI/交互显示与输入；一旦出现在 events/profile/dist/
+短 ID（UUIDv7 前 12 位十六进制 = 完整 48-bit 时间戳）仅用于 CLI/交互显示与输入；一旦出现在 events/profile/dist/
 导出 bundle 中即判 fail。完整 UUIDv7 规范形式允许出现在事件、entities 与 concept frontmatter。
 """
 

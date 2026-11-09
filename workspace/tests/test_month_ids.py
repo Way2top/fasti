@@ -22,13 +22,14 @@ class TestMonthAndIds(unittest.TestCase):
         ids.reset_generator()
         value = ids.new_uuid7()
         self.assertRegex(value, UUID7_RE)
-        self.assertEqual(ids.short_id(value), value[:8])
+        self.assertEqual(ids.short_id(value), value.replace("-", "")[:12])
+        self.assertEqual(len(ids.short_id(value)), ids.SHORT_ID_LEN)
         # 完整形式/大写/无连字符 均归一化为 32 位十六进制
         self.assertEqual(ids.normalize_reference(value),
                          value.replace("-", "").lower())
         self.assertEqual(ids.normalize_reference(value.upper()),
                          value.replace("-", "").lower())
-        self.assertRegex(ids.auto_category_key(), r"^c-[0-9a-f]{8}$")
+        self.assertRegex(ids.auto_category_key(), r"^c-[0-9a-f]{12}$")
         self.assertTrue(ids.is_uuid7(value))
         self.assertFalse(ids.is_uuid7("fact-0001"))
         ids.reset_generator()
