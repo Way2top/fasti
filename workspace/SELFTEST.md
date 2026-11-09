@@ -87,8 +87,8 @@
 | ST-48 | AC-13-1~13-5（防呆） | `node --check fasti/adapters/web_static/app.js` + 断言 IIFE 首尾行 | 修复 R-F1 后 **exit 0**（修复前 `SyntaxError: Unexpected token '}'`，exit 1）；断言首行 `(function () {`、次行 `"use strict";`、倒数第二行 `})();` | ✅ |
 | ST-49 | 静态资源完整性（防呆） | 检查 `web_static/` 三文件存在/非空/单末尾 LF、`index.html` 仅同源引用、零外部 URL、与基线内联内容 sha256 一致 | 全部通过；`app.js` 内容 sha256 `0fb916a6…`、`style.css` 内容 sha256 `d6e0c406…` 与 `git show refactor-baseline:…/index.html` 的内联内容**逐字节相同** | ✅ |
 
-**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **72 条自动化用例**（C-06 v2：UUIDv7/短前缀/格式门/类别复活/持久化短 ID 守卫/写路径原子性等，见 §9）；无失败项。
-自动化测试：`Ran 72 tests … OK`（见 §4.1 与 §9）。
+**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **75 条自动化用例**（C-06 v2：UUIDv7/短前缀/格式门/类别复活/持久化短 ID 守卫/写路径原子性/前端字段契约等，见 §9）；无失败项。
+自动化测试：`Ran 75 tests … OK`（见 §4.1 与 §9）。
 > 注：下表 ST-01~ST-47 中出现的 `fact-0001` / `line-0001` / `cat-0002` 为 **v1（序号方案）历史记录**；C-06 迁移后同一行为以 UUIDv7 + 短前缀复现，见 §9。
 
 ---
@@ -99,9 +99,9 @@
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests -v
-…（72 个用例，全 ok）
+…（75 个用例，全 ok）
 ----------------------------------------------------------------------
-Ran 72 tests in 2.676s
+Ran 75 tests in 2.631s
 
 OK
 ```
@@ -308,11 +308,11 @@ python3 -V                     # 期望 3.9+（实测 3.13.3）
 python3 -c "import sqlite3; print(sqlite3.sqlite_version)"   # 期望 >= 3.38（需 JSON1）
 ```
 
-### 4.1 一键自动化（覆盖 v2 标识/短前缀/格式门/类别复活/写路径原子性/确定性/演进纠正/导入导出/CLI/网页/分层/静态资源，72 用例）
+### 4.1 一键自动化（覆盖 v2 标识/短前缀/格式门/类别复活/写路径原子性/前端字段契约/确定性/演进纠正/导入导出/CLI/网页/分层/静态资源，75 用例）
 
 ```bash
 python3 -m unittest discover -s tests -v
-# 期望最后三行：Ran 72 tests in … / OK
+# 期望最后三行：Ran 75 tests in … / OK
 ```
 
 ### 4.2 端到端手工场景（照抄命令，对比输出）
@@ -459,7 +459,7 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 
 - 全部实现位于 `workspace/`，入口 `python3 run.py …`（或安装后的 `fasti …`）。
 - 运行方式与命令速览见 [`README.md`](README.md)。
-- 自测统计：**自动化 72/72 通过（见 §9，含 QA 回归修复新增 4 条）；手工/端到端 49 条用例中 47 条完全通过、2 条「核心语义通过 + 真实环境待验」、0 失败**。
+- 自测统计：**自动化 75/75 通过（见 §9，含 QA 回归修复 4 条 + 前端字段契约 3 条）；手工/端到端 49 条用例中 47 条完全通过、2 条「核心语义通过 + 真实环境待验」、0 失败**。
 - **等待 QA 独立验证**：以上「完成」仅为开发侧自测结论，不代表项目验收通过；QA 应按 `artifacts/product-spec.md` 的 59 条 AC 独立复现并给出 `pass` / `fail` 判定。
 
 ---
@@ -664,13 +664,15 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 | 3 | `db8df96` | README / SELFTEST 同步（短 ID 用法、v2 格式、迁移指引、证据与契约缺口） |
 | 4 | **`cb1e819`** | **架构师裁决：默认短 ID 8 → 12 位**（ADR-023 v1.5 / api-spec v1.2.1）：`SHORT_ID_LEN=12` 单一常量、`SHORT_ID_RE`、`short_id()`、自动类别 key `c-<12位>`、`CONTRACT_VERSION 1.1.0→1.2.1`、`app.js` 显示截断 12；测试同步 12 位口径（纯显示层，无 schema/数据变更） |
 | 5 | `8ce065a` | README / SELFTEST 同步 12 位短 ID 口径与实测证据 |
-| 6 | **`fa14fcf`** | **QA 回归修复**：P0 写路径改为「先内存折叠校验、通过后才落盘」+ 自动类别 key 全量碰撞检查；P1 网页短 ID 去连字符；P2 错误码兜底文案用 FORMAT_VERSION；新增 `test_write_atomicity.py`（68 → 72） |
+| 6 | `fa14fcf` | QA 回归修复：P0 写路径改为「先内存折叠校验、通过后才落盘」+ 自动类别 key 全量碰撞检查；P1 网页短 ID 去连字符；P2 错误码兜底文案用 FORMAT_VERSION；新增 `test_write_atomicity.py`（68 → 72） |
+| 7 | **`17cb6da`** | **用户实测阻断修复**：网页类别对象字段 `item.category_key` → `item.key`（5 处）；新增 `test_web_contract.py`（前端 JS↔api-spec 字段契约，72 → 75） |
+| 8 | 本文件 commit | README / SELFTEST 同步（§9.9 前端字段契约修复证据；用例 75） |
 
-### 9.3 自动化测试（72 用例，全绿）
+### 9.3 自动化测试（75 用例，全绿）
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests
-Ran 72 tests in 2.676s
+Ran 75 tests in 2.631s
 OK
 ```
 
@@ -683,6 +685,8 @@ OK
 - `test_format_gate.py`（6）：v1 数据目录 ⇒ `STORE_FORMAT_UNSUPPORTED`（退出码 5，消息含「迁移」「§12.5」）；
   verify 同样上报退出码 5；v1 bundle / 未来版本 bundle ⇒ `IMPORT_UNSUPPORTED_FORMAT_VERSION`（退出码 4，
   消息含「UUIDv7 迁移」「当前支持版本 2」）；新 store 事件 `format_version == 2`；导出 manifest == 2。
+- `test_web_contract.py`（3）：**前端 `app.js` 的类别/事实对象字段访问必须是 api-spec `Category`/`Fact.properties`
+  的子集**（防 `item.category_key` 这类前端字段名漂移；白名单仅 3 条并逐条注明理由；已验证「改回 bug 会红」）。
 - `test_write_atomicity.py`（3）：**固定同毫秒时钟/随机源的自动类别 key 撞车 ⇒ `VALIDATION_CATEGORY_KEY_TAKEN`，
   `events.jsonl` sha256 与条数不变、store 仍可读可写**；9 条失败写操作逐一断言 events sha256 不变。
 - `test_id_persistence_guard.py`（3）：**短 ID 不得出现在任何持久化/导出内容**（events/profile/dist/导出 bundle，
@@ -850,5 +854,75 @@ $ curl /api/health                                                # {"contract_v
 | 写路径顺序 | `grep` 确认 8 处写路径均为 `fold_for_write` 在 `store.write_events` 之前（含 init） |
 | `node --check` | exit 0；`web_static/**` 零外链 |
 | 行数/依赖 | 无文件 >500 行；零第三方依赖不变（`test_layering` 通过） |
+| 用户数据 | 全程 `--data-dir` 临时目录，未触碰 `~/.fasti` |
+
+### 9.9 用户实测阻断修复：前端类别字段契约（P0 · commit `17cb6da`）
+
+#### 现象与根因
+
+- **现象（用户实测）**：网页「新增事实」提交时报
+  `NOT_FOUND_CATEGORY 类别不存在：'undefined'` —— P0 主界面不可用。
+- **根因**：`api-spec.yaml` 的 `Category` 对象身份字段是 **`key`**（无 `category_key`），
+  API 实现返回正确；但 `app.js` 有 **5 处**把类别对象写成 `item.category_key`（该对象上不存在此字段）：
+  - 99 行 `categoryNames[item.category_key]`（类别名映射全空）
+  - **108 行 `option.value = item.category_key`（下拉 value=undefined ← 用户报的 bug 源头）**
+  - 156 行 `/api/categories/${item.category_key}/enabled`（启停 URL 错）
+  - 168 行 `key !== item.category_key`（迁移候选列表错）
+  - 173 行 `/api/categories/${item.category_key}/delete`（删除 URL 错）
+- **为什么不归 API**：API 一直是好的；QA 测的是 API 层，bug 在「前端 JS 字段名 ↔ API 契约」之间。
+
+#### 修复
+
+5 处 `item.category_key` → **`item.key`**；事实对象的 `fact.category_key`（190 行）保持正确、未改。
+`node --check fasti/adapters/web_static/app.js` → **exit 0**。
+
+#### 防呆测试（新增 `tests/test_web_contract.py`，3 用例；72 → 75）
+
+1. 从 `artifacts/api-spec.yaml` 的 `domain_model.$defs.Category` / `$defs.Fact` **缩进解析 properties**
+   （不引入 PyYAML；解析失败/文件缺失会显式 fail / skip，不静默通过）；
+2. 正则扫描 `app.js` 中形如 `<obj>.<field>` 的访问（obj ∈ {`item`, `category`, `fact`}）；
+3. 断言：类别对象字段 ⊆ `Category.properties`；事实对象字段 ⊆ `Fact.properties`；
+4. 白名单**仅 3 条**（逐条给理由）：
+   - `category.value`：`form.category` 是 HTMLFormElement 的具名表单控件（DOM 元素），不是 Category 对象；
+   - `item.path` / `item.bytes`：渲染产物列表项 `{path, bytes, sha256}`（`/api/render` 的 artifacts），不是 Category 对象；
+5. 另加回归锁定：禁止 `item.category_key`、要求 `item.key` 与 `fact.category_key`。
+
+**红检查（证明测试真能抓住这次 bug）**：临时把 `option.value = item.key` 改回 `item.category_key`：
+```
+FAIL: test_app_js_object_fields_match_contract
+  app.js 访问了 api-spec 契约中不存在的字段：['item.category_key']
+FAIL: test_category_identity_is_key_in_app_js
+  app.js 不得访问 item.category_key（类别对象身份字段是 key，否则下拉 value=undefined）；应改为 item.key
+Ran 3 tests … FAILED (failures=2)
+```
+恢复修复后 → `Ran 3 tests … OK`。
+
+#### 手工验证（实际执行）
+
+```
+# 1) GET /api/categories → 7 个类别
+类别数: 7 | keys: ['basics','tech','experience','projects','communication','state','goals']
+字段检查: item.key 存在且无 item.category_key: True
+
+# 2) 用 app.js 的同款取值逻辑（option.value = item.key）模拟下拉
+下拉 option.value 实际取值: ['basics','tech','experience','projects','communication','state','goals']
+是否存在 undefined: false
+
+# 3) 用下拉里的真实 key（tech）POST /api/facts
+HTTP: 200 | 创建成功: True | fact_id 长度: 36 | category_key: tech
+内容: 网页表单实测：主力语言 C++
+
+# 4) 复核
+GET /api/facts → facts 数量 1、第一条类别 tech；GET / → HTTP:200
+```
+
+#### 修复后验证
+
+| 项 | 结果 |
+|---|---|
+| unittest | **Ran 75 tests … OK**（72 + 3 条前端字段契约） |
+| `verify --deep` | **7/7 PASS** |
+| `node --check` | exit 0；页面零外部请求不变 |
+| 行数 | 无文件 >500（`test_web_contract.py` 130 行） |
 | 用户数据 | 全程 `--data-dir` 临时目录，未触碰 `~/.fasti` |
 
