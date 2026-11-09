@@ -11,7 +11,7 @@ from .. import constants
 from .. import export as export_module
 from .. import importer as importer_module
 from .. import install as install_module
-from ._shared import (_load_model, _make_event, is_initialized)
+from ._shared import (_load_model, _make_event, fold_for_write, is_initialized)
 
 __all__ = ["init_store", "get_status", "export_bundle", "import_bundle", "install_hosts"]
 
@@ -53,7 +53,8 @@ def init_store(data_dir):
             events.append(_make_event(events, "category_added", category, at))
             categories.append(dict(category, deleted_at=None, deleted_handling=None,
                                    migrate_to_category_key=None))
-        store.write_events(data_dir, events)
+        fold_for_write(events)                      # 先内存折叠校验
+        store.write_events(data_dir, events)        # 通过后才落盘
     return {
         "data_dir": data_dir,
         "categories": [{

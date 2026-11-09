@@ -98,6 +98,16 @@ class TestFormatGate(BaseStoreTest):
         self.assertEqual(ctx.exception.code, "IMPORT_UNSUPPORTED_FORMAT_VERSION")
         self.assertEqual(ctx.exception.exit_code, 4)
 
+    def test_default_error_message_uses_current_format_version(self):
+        """P2 回归：IMPORT_UNSUPPORTED_FORMAT_VERSION 兜底文案不得残留旧版本号。"""
+        from fasti.core import constants
+        message = errors.DEFAULT_MESSAGES["IMPORT_UNSUPPORTED_FORMAT_VERSION"]
+        self.assertEqual(constants.FORMAT_VERSION, 2)
+        self.assertIn("当前支持版本 2", message)
+        self.assertIn("UUIDv7 迁移", message)
+        self.assertIn("§12.5", message)
+        self.assertNotIn("当前支持版本 1", message)
+
     def test_export_manifest_is_format_version_2(self):
         api.add_fact(self.data_dir, "tech", "x", "2026-11")
         exported = api.export_bundle(self.data_dir)

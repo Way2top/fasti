@@ -6,6 +6,8 @@
 两者都不得改变错误码语义。
 """
 
+from . import constants
+
 # 错误码 → 退出码（api-spec conventions.error_catalog，固定，不得自创映射）
 EXIT_CODES = {
     # 用法
@@ -106,7 +108,10 @@ DEFAULT_MESSAGES = {
     "CORRUPT_EVENT_SEQUENCE": "事件序号不连续或首事件不是 store_initialized",
     "CORRUPT_MANIFEST": "派生状态清单 state/manifest.json 无法解析",
     "IMPORT_INVALID_MANIFEST": "导入 bundle 的 manifest.json 缺失或字段不合法",
-    "IMPORT_UNSUPPORTED_FORMAT_VERSION": "不支持的导出格式版本（当前支持版本 1），请升级 fasti 后重试",
+    "IMPORT_UNSUPPORTED_FORMAT_VERSION": (
+        "不支持的导出格式版本（当前支持版本 %d）：v1 导出包需先完成 UUIDv7 迁移"
+        "（见 architecture.md §12.5），再用当前版本重新导出" % constants.FORMAT_VERSION
+    ),
     "IMPORT_INVALID_RECORD": "导入记录结构不合法",
     "IMPORT_SEMANTIC_INVALID": "导入事件语义校验失败",
     "IMPORT_PAYLOAD_CHECKSUM_MISMATCH": "结构化数据校验失败：payload sha256 与 manifest 不一致",

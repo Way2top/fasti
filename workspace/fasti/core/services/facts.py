@@ -13,7 +13,8 @@ from .. import ids
 from .. import store
 from .. import validate
 from ._shared import (WARN_RENDER, _load_model, _make_event, _require_alive_category,
-                      _resolve_category, _resolve_fact, _resolve_line, _sort_facts)
+                      _resolve_category, _resolve_fact, _resolve_line, _sort_facts,
+                      fold_for_write)
 
 __all__ = ["add_fact", "change_fact", "delete_fact", "list_facts", "show_fact"]
 
@@ -45,8 +46,8 @@ def add_fact(data_dir, category, content, valid_from):
             "recorded_at": at,
         }, at)
         new_events = events + [event]
-        store.write_events(data_dir, new_events)
-        new_model = fold.fold_events(new_events)
+        new_model = fold_for_write(new_events)      # 先内存折叠校验
+        store.write_events(data_dir, new_events)    # 通过后才落盘
     return {
         "fact": new_model.fact(fact_id),
         "line": new_model.lines[line_id],
@@ -91,8 +92,8 @@ def change_fact(data_dir, fact_id, change_type, content, valid_from=None, note=N
                 "recorded_at": at,
             }, at)
             new_events = events + [event]
+            new_model = fold_for_write(new_events)
             store.write_events(data_dir, new_events)
-            new_model = fold.fold_events(new_events)
             revisions = new_model.revisions_of(fact["fact_id"])
             return {
                 "change_type": "correct",
@@ -136,8 +137,8 @@ def change_fact(data_dir, fact_id, change_type, content, valid_from=None, note=N
             "recorded_at": at,
         }, at)
         new_events = events + [event]
-        store.write_events(data_dir, new_events)
-        new_model = fold.fold_events(new_events)
+        new_model = fold_for_write(new_events)      # 先内存折叠校验
+        store.write_events(data_dir, new_events)    # 通过后才落盘
         line = new_model.lines[fact["line_id"]]
         return {
             "change_type": "evolve",
@@ -165,8 +166,8 @@ def delete_fact(data_dir, fact_id):
             "recorded_at": at,
         }, at)
         new_events = events + [event]
-        store.write_events(data_dir, new_events)
-        new_model = fold.fold_events(new_events)
+        new_model = fold_for_write(new_events)      # 先内存折叠校验
+        store.write_events(data_dir, new_events)    # 通过后才落盘
     return {
         "fact": new_model.fact(resolved_id),
         "warnings": [WARN_RENDER],

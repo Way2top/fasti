@@ -12,6 +12,7 @@ from .. import fold
 from .. import ids
 from .. import profile as profile_module
 from .. import store
+from .. import validate
 
 WARN_RENDER = "画像已变更，宿主产物待更新；运行 fasti render 使宿主产物生效"
 WARN_RECOMPUTE = "宿主产物待更新；运行 fasti render 使宿主产物生效"
@@ -100,6 +101,21 @@ def _load_model(data_dir):
 
 def _make_event(events, event_type, data, at):
     return {"seq": len(events) + 1, "at": at, "type": event_type, "data": data}
+
+
+def fold_for_write(new_events):
+    """写前校验（P0 回归修复）：先在内存折叠 + 领域不变量校验，全部通过才允许落盘。
+
+    任何 CoreError 都发生在 store.write_events 之前 ⇒ 校验失败不会留下事件，
+    events.jsonl 字节不变（避免「先写后折叠」造成 store 损坏）。
+    """
+    new_model = fold.fold_events(new_events)
+    problems = validate.check_invariants(new_model)
+    if problems:
+        raise errors.make("CORRUPT_EVENT_LOG",
+                          "写前校验失败：%s" % problems[0],
+                          details={"problems": problems[:5]})
+    return new_model
 
 
 def _resolve_category(model, reference, field="category"):

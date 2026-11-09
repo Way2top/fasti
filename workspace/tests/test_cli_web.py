@@ -176,8 +176,12 @@ class TestCliAndWeb(unittest.TestCase):
         for name in ("index.html", "style.css", "app.js"):
             self.assertEqual(re.findall(r"https?://", self._static_text(name)), [], name)
         # v2（C-06）起 app.js 有意更新了 category_key 语义；此处只保留结构/语法/引用守卫。
-        self.assertIn("category_key", self._static_text("app.js"))
-        self.assertNotIn("category_id", self._static_text("app.js"))
+        app_js = self._static_text("app.js")
+        self.assertIn("category_key", app_js)
+        self.assertNotIn("category_id", app_js)
+        # P1 回归：短 ID 必须先去掉连字符再截 12 位（与 CLI 一致），不能显示 "01a1c0c9-c2f"
+        self.assertIn('replace(/-/g, "").slice(0, 12)', app_js)
+        self.assertNotIn("fact.fact_id.slice(0, 12)", app_js)
 
 
 if __name__ == "__main__":

@@ -12,9 +12,29 @@ from .. import fold
 from .. import ids
 from .. import store
 from .. import validate
-from ._shared import (WARN_RENDER, _load_model, _make_event, _resolve_category)
+from ._shared import (WARN_RENDER, _load_model, _make_event, _resolve_category,
+                      fold_for_write)
 
 __all__ = ["list_categories", "add_category", "set_category_enabled", "delete_category"]
+
+AUTO_KEY_MAX_ATTEMPTS = 5
+
+
+def _generate_auto_category_key(model):
+    """自动 key 必须避开**所有**已占用 key（含已删除类别：key 永久占用，ADR-023）。
+
+    同一毫秒内连续新增无 --key 的类别会生成相同 c-<前12位>；此处重试，耗尽则
+    返回 VALIDATION_CATEGORY_KEY_TAKEN（调用方在落盘前抛出，不写坏事件）。
+    """
+    for _attempt in range(AUTO_KEY_MAX_ATTEMPTS):
+        candidate = ids.auto_category_key()
+        if candidate not in model.categories:
+            return candidate
+    raise errors.make(
+        "VALIDATION_CATEGORY_KEY_TAKEN",
+        "自动生成的类别 key 连续冲突（%d 次）：请显式提供 --key" % AUTO_KEY_MAX_ATTEMPTS,
+        details={"field": "key", "attempts": AUTO_KEY_MAX_ATTEMPTS},
+    )
 
 
 def list_categories(data_dir):
@@ -35,7 +55,7 @@ def add_category(data_dir, name, key=None, enabled=True):
                               "类别名称已被占用：%s" % display_name,
                               details={"field": "name", "display_name": display_name})
         if key is None:
-            key = ids.auto_category_key()
+            key = _generate_auto_category_key(model)
         elif any(category["key"] == key for category in alive):
             raise errors.make("VALIDATION_CATEGORY_KEY_TAKEN",
                               "类别 key 已被占用：%s" % key,
@@ -51,8 +71,8 @@ def add_category(data_dir, name, key=None, enabled=True):
         }
         event = _make_event(events, "category_added", data, at)
         new_events = events + [event]
-        store.write_events(data_dir, new_events)
-        new_model = fold.fold_events(new_events)
+        new_model = fold_for_write(new_events)      # 先内存折叠校验
+        store.write_events(data_dir, new_events)    # 通过后才落盘
     return {
         "category": new_model.category(key),
         "warnings": [WARN_RENDER],
@@ -76,8 +96,8 @@ def set_category_enabled(data_dir, category, enabled):
             "at": at,
         }, at)
         new_events = events + [event]
-        store.write_events(data_dir, new_events)
-        new_model = fold.fold_events(new_events)
+        new_model = fold_for_write(new_events)      # 先内存折叠校验
+        store.write_events(data_dir, new_events)    # 通过后才落盘
     return {
         "category": new_model.category(category_obj["key"]),
         "warnings": [WARN_RENDER],
@@ -137,8 +157,8 @@ def delete_category(data_dir, category, handling, migrate_to=None):
             "at": at,
         }, at)
         new_events = events + [event]
-        store.write_events(data_dir, new_events)
-        new_model = fold.fold_events(new_events)
+        new_model = fold_for_write(new_events)      # 先内存折叠校验
+        store.write_events(data_dir, new_events)    # 通过后才落盘
     return {
         "category": new_model.category(category_obj["key"]),
         "affected_facts": affected,
