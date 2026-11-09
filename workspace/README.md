@@ -19,16 +19,16 @@ python3 run.py init
 # 2) 录入事实（从 2025-01 起为真）
 python3 run.py fact add --category tech --content "主力语言：Python" --valid-from 2025-01
 
-# 3) 找到刚录入的 fact（text 输出显示短 ID = UUIDv7 前 8 位；也可 --json 取完整 ID）
+# 3) 找到刚录入的 fact（text 输出显示短 ID = UUIDv7 前 12 位 = 完整 48-bit 时间戳；也可 --json 取完整 ID）
 python3 run.py fact list
 #    短ID | line 短ID | 类别 key | 生效 | 内容 | 变更类型 | 首次录入
-#    0190a1b2 | 0190a1b3 | tech | 2025-01 | 主力语言：Python | create | 2026-…
+#    0190a1b23c4d | 0190a1b43c4d | tech | 2025-01 | 主力语言：Python | create | 2026-…
 
 # 4) 演进：2026-11 起主力语言变为 C++（旧段自动收盘于 2026-10）
-python3 run.py fact change 0190a1b2 --type evolve --content "主力语言：C++" --valid-from 2026-11
+python3 run.py fact change 0190a1b23c4d --type evolve --content "主力语言：C++" --valid-from 2026-11
 
 # 5) 纠正：把 2025-01~2026-10 误记的 Python 改成 Java（区间不变，历史保留原内容）
-python3 run.py fact change 0190a1b2 --type correct --content "主力语言：Java" --note "Python 系误记"
+python3 run.py fact change 0190a1b23c4d --type correct --content "主力语言：Java" --note "Python 系误记"
 
 # 6) 查看
 python3 run.py profile show        # 当前画像
@@ -230,18 +230,20 @@ python3 run.py import /tmp/bundle --overwrite   # 非空环境必须显式覆盖
 | 对象 | v2 形式 |
 |---|---|
 | `line_id` / `fact_id` | **UUIDv7**（RFC 9562；36 字符小写规范形式，字典序 = 创建时间序） |
-| 类别身份 | 语义 **`category_key`**（无 `category_id`；7 个模板 key 固定，自定义可省略 → 自动 `c-<UUIDv7 前 8 位>`） |
+| 类别身份 | 语义 **`category_key`**（无 `category_id`；7 个模板 key 固定，自定义可省略 → 自动 `c-<UUIDv7 前 12 位>`，如 `c-0190a1b23c4d`） |
 | 修订 | **无独立 ID**：以 `(fact_id, seq)` 复合定位 |
-| CLI text 显示 | **短 ID = 前 8 位十六进制**（如 `0190a1b2`） |
-| CLI 入参 | 完整 UUIDv7，或 **4~32 位十六进制唯一前缀**（大小写不敏感、忽略连字符） |
+| CLI text 显示 | **短 ID = 前 12 位十六进制**（= 完整 48-bit 时间戳，如 `0190a1b23c4d`） |
+| CLI 入参 | 完整 UUIDv7，或 **4~32 位十六进制唯一前缀**（大小写不敏感、忽略连字符）；默认显示/推荐输入 12 位 |
 | `--json` / 事件 / 导出 / 网页 API | **一律完整 UUIDv7 规范形式**（短 ID 绝不进入持久化/导出内容） |
 
 短前缀解析：唯一命中即用；0 命中 → `NOT_FOUND_FACT` / `NOT_FOUND_LINE`（退出码 3）；
 多命中 → `VALIDATION_AMBIGUOUS_REFERENCE`（退出码 4，`details.candidates` 列候选，最多 10 个）；
 格式非法 → `VALIDATION_INVALID_ID`（退出码 4）。**不静默取第一个**（AS-19）。
 
-> 注意：UUIDv7 的前 8 位是 48 位毫秒时间戳的高 32 位，**同一 ~65 秒窗口内创建的 ID 前 8 位相同**；
-> 此时用 8 位短 ID 会正确地报「歧义」，请多输入几位（最多 32 位）或用 `--json`/`fact show` 取完整 ID。
+> 注意：短 ID 默认 **12 位 = 完整 48-bit 毫秒时间戳**，**不同毫秒创建的 fact/line 前缀必不同**（日常零歧义）。
+> 只有**同一毫秒内创建**多个 ID，或**人为输入 4–11 位更短前缀**时才可能歧义；此时会正确返回
+> `VALIDATION_AMBIGUOUS_REFERENCE`（退出码 4 + 候选列表，禁止静默取第一个），加长到 13–32 位即可。
+> 版本口径：`contract_version = 1.2.1`（ADR-023 v1.5 / api-spec v1.2.1）。
 
 ### 9.2 格式版本（ADR-024）
 
@@ -306,5 +308,5 @@ python3 run.py --data-dir "$T" verify --deep && echo SMOKE-OK
 6. **同秒内多次变更**按 revision 序号定序（时间戳为秒精度，符合 AS-10）；跨秒即可按时间区分。
 7. 页面是极简表单（非 UI 精修），只实现 `api-spec.yaml` §5 的 16 个端点，不做导出/导入（设计上留给 CLI）。
 8. **v1 数据不兼容**：用户旧 `~/.fasti`（format_version 1）会被明确拒绝，需按 §9.2 迁移（Lead 已备份 `~/fasti-backup-v1/`）。本轮未触碰用户数据目录。
-9. **短 ID 的 65 秒窗口歧义**：同一 ~65 秒内创建的 ID 共享前 8 位，短 ID 会报歧义（正确行为）；高频批量录入时需用更长前缀或 `--json` 完整 ID。
+9. **短 ID 位数**：默认 12 位（= 完整 48-bit 时间戳，不同毫秒必不同）；仅同毫秒创建或 4–11 位更短前缀会歧义（正确报错列候选）。极高频批量（同毫秒多个）录入时需加长前缀或用 `--json` 完整 ID。
 10. **UUIDv7 时间序依赖本机时钟**（AS-17）：时钟回拨只影响排序近似，唯一性不受影响；`recorded_at` 仍是审计真相。

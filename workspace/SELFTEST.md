@@ -647,9 +647,9 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 | `line_id` / `fact_id` | `line-0001` / `fact-0001`（序号 max+1） | **UUIDv7**（RFC 9562，36 字符小写；时间有序） |
 | 类别身份 | `category_id=cat-0002` + `key` 双身份 | **语义 `category_key`（唯一身份）**；已删除 key 永久占用；同 key 重建 = 复活 |
 | 修订 | `revision_id=rv-<fact序号>-<n>` | **无独立 ID：`(fact_id, seq)` 复合主键** |
-| CLI text 显示 | 完整序号 ID | **短 ID（前 8 位十六进制）**；`--json`/事件/导出一律完整形式 |
+| CLI text 显示 | 完整序号 ID | **短 ID（默认前 12 位十六进制 = 完整 48-bit 时间戳）**；`--json`/事件/导出一律完整形式 |
 | CLI 入参 | 完整序号 ID | 完整 UUIDv7 **或 4~32 位十六进制唯一前缀**（0 命中 NOT_FOUND_*、多命中歧义报错列候选、非法 VALIDATION_INVALID_ID） |
-| 格式 | `format_version: 1` | **`format_version: 2`**；v1 数据/包不兼容（显式拒绝 + 迁移指引） |
+| 格式 | `format_version: 1` | **`format_version: 2`**；v1 数据/包不兼容（显式拒绝 + 迁移指引）；`contract_version = 1.2.1` |
 
 **不改的**：画像内容与排序、历史语义（演进=新段/纠正=新修订/删除=墓碑）、三宿主产物字节口径、
 导入全有或全无、断网可用、仅本机监听、零第三方依赖、`core/api.py` 薄门面与 20 函数签名、
@@ -661,7 +661,9 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 |---|---|---|
 | 1 | `be10907` | `core/ids.py`：stdlib UUIDv7 生成器（`time.time_ns()//1e6` + `os.urandom`，同毫秒 rand_a 单调 Method 1、溢出等下一毫秒）+ 规范形式/短前缀解析 + 测试接缝；errors 新增 `STORE_FORMAT_UNSUPPORTED`/`VALIDATION_INVALID_ID`；新增 `tests/test_ids_uuid7.py`（11 用例） |
 | 2 | `596e36e` | 领域模型/事件/折叠/校验/服务/导出导入/适配层全量迁移到 v2（类别 key 身份 + 复活、UUIDv7、修订复合键、格式门、短前缀解析、CLI 短 ID、网页 category_key）；随包 DDL 升级 schema_version 2；测试重写为 68 用例（含新增 `test_short_ids`/`test_format_gate`/`test_id_persistence_guard`） |
-| 3 | 本文件 commit | README / SELFTEST 同步（短 ID 用法、v2 格式、迁移指引、证据与契约缺口） |
+| 3 | `db8df96` | README / SELFTEST 同步（短 ID 用法、v2 格式、迁移指引、证据与契约缺口） |
+| 4 | **`cb1e819`** | **架构师裁决：默认短 ID 8 → 12 位**（ADR-023 v1.5 / api-spec v1.2.1）：`SHORT_ID_LEN=12` 单一常量、`SHORT_ID_RE`、`short_id()`、自动类别 key `c-<12位>`、`CONTRACT_VERSION 1.1.0→1.2.1`、`app.js` 显示截断 12；测试同步 12 位口径（纯显示层，无 schema/数据变更） |
+| 5 | 本文件 commit | README / SELFTEST 同步 12 位短 ID 口径与实测证据 |
 
 ### 9.3 自动化测试（68 用例，全绿）
 
@@ -674,7 +676,7 @@ OK
 覆盖（新增/重写）：
 - `test_ids_uuid7.py`（11）：规范形式/版本与变体位、同毫秒字典序递增、跨毫秒时间序、
   rand_a 12-bit 溢出等待下一毫秒、唯一性、短 ID、完整/大写/无连字符归一化、非法输入、
-  唯一前缀/0 命中/>1 命中（候选 ≤10）。
+  唯一前缀/0 命中/>1 命中（候选 ≤10）；**默认短 ID = 12 位**（`SHORT_ID_LEN`、`SHORT_ID_RE`、`c-<12位>`）。
 - `test_short_ids.py`（5）：fact 短前缀唯一解析、歧义报 `VALIDATION_AMBIGUOUS_REFERENCE`、
   非法 `VALIDATION_INVALID_ID`、0 命中 `NOT_FOUND_FACT`/`NOT_FOUND_LINE`、line 过滤。
 - `test_format_gate.py`（6）：v1 数据目录 ⇒ `STORE_FORMAT_UNSUPPORTED`（退出码 5，消息含「迁移」「§12.5」）；
@@ -689,18 +691,29 @@ OK
 ### 9.4 实测验证（实际执行）
 
 ```bash
-# 1) UUIDv7 形态与时间序（同毫秒 rand_a 单调）
-$ python3 run.py fact add --category tech --content "主力语言：Python" --valid-from 2025-01
-已录入 fact 01a1c0bb（line 01a1c0bb · 技术背景 · 生效 2025-01）
+# 1) UUIDv7 形态 + 连续创建 3 条事实：text 显示 12 位短 ID（= 完整 48-bit 时间戳），互不相同
+$ python3 run.py fact add --category tech --content "事实 1" --valid-from 2023-01
+已录入 fact 01a1c0c8347e（line 01a1c0c8347e · 技术背景 · 生效 2023-01）
+$ python3 run.py fact add --category tech --content "事实 2" --valid-from 2024-02
+已录入 fact 01a1c0c834a1（line 01a1c0c834a1 · 技术背景 · 生效 2024-02）
+$ python3 run.py fact add --category tech --content "事实 3" --valid-from 2025-03
+已录入 fact 01a1c0c834c1（line 01a1c0c834c1 · 技术背景 · 生效 2025-03）
+$ python3 run.py fact list
+短ID | line 短ID | 类别 key | 生效 | 内容 | 变更类型 | 首次录入
+01a1c0c8347e | 01a1c0c8347e | tech | 2023-01 | 事实 1 | create | 2026-11-09T22:48:28+08:00
+01a1c0c834a1 | 01a1c0c834a1 | tech | 2024-02 | 事实 2 | create | 2026-11-09T22:48:28+08:00
+01a1c0c834c1 | 01a1c0c834c1 | tech | 2025-03 | 事实 3 | create | 2026-11-09T22:48:28+08:00
+共 3 条（返回 3 条）      # 三条 12 位短 ID 互不相同；不同毫秒创建的 ID 前 12 位必不同
 $ python3 run.py --json fact list
 JSON fact_id len: 36 | line_id len: 36 | category_key: tech     # --json 为完整 UUIDv7
 
-# 2) 短 ID 入参（列出 text 显示的 8 位短 ID 后直接引用）
-$ python3 run.py fact show 01a1c0bb
-事实 01a1c0bb
+# 2) 短 ID 入参：fact show <12 位> 逐一唯一命中（text 显示什么就能用什么）
+$ python3 run.py fact show 01a1c0c834a1
+事实 01a1c0c834a1
 类别：tech（技术背景）
-命题线：01a1c0bb
+命题线：01a1c0c834a1
 …
+（三条逐一执行均唯一命中；仅同毫秒创建或人为输入 4–11 位更短前缀才会歧义）
 
 # 3) 端到端自检（冻结 v2 store 上）
 $ python3 run.py verify --deep
@@ -739,18 +752,20 @@ $ python3 -c "import ast,sys; …"   # tests/test_layering.py：全包 import �
 $ grep -rnoE "https?://[^\"' )]+" fasti/adapters/web_static/    # 无输出
 $ node --check fasti/adapters/web_static/app.js                   # exit 0
 $ find fasti tests … | xargs wc -l | tail -1                      # 7339 total（55 文件；无 >500 行）
+$ python3 -c "from fasti.core import constants; print(constants.CONTRACT_VERSION)"
+1.2.1                                                             # 与 api-spec contract_version 一致
+$ curl /api/health                                                # {"contract_version": "1.2.1", …}
 ```
 
 ### 9.5 契约缺口 / 风险（需 Lead / 架构师知悉）
 
-1. **短 ID 的 65 秒窗口歧义（契约内部张力，已在实现中按契约处理）**：
-   UUIDv7 前 8 位是 48-bit 毫秒时间戳的高 32 位，**变化周期 = 2^16 ms ≈ 65.5 秒**。
-   因此同一 ~65 秒窗口内创建的多个 ID **前 8 位相同**；此时 `fasti fact show <8位短ID>` 会（正确地）
-   返回 `VALIDATION_AMBIGUOUS_REFERENCE`，用户需多输入几位（最长 32 位）或改用 `--json` 取完整 ID。
-   这与 `architecture.md §12.7` 中「`fact show <前 4–8 位>` 唯一命中成功」的验收口径存在冲突
-   （该口径隐含 8 位足以唯一）。**未擅自修改契约**：实现严格按 `conventions.ids.display_text = 前 8 位`
-   与「禁止静默取第一个（AS-19）」执行。**建议**由架构师/QA 决定：或将 display_text 改为更长前缀
-   （如 12–13 位，仍短于 36 位），或在验收中明确「同窗口 ID 需更长前缀」。
+1. **短 ID 位数：已由架构师裁决为 12 位（本 commit 落地）**：
+   8 位 = 48-bit 毫秒时间戳的高 32 位，变化周期 2^16 ms ≈ 65.5 s（同窗口必歧义）；
+   **12 位 = 完整 48-bit 时间戳 ⇒ 不同毫秒创建的 ID 前缀必不同（日常零歧义）**。
+   新口径（ADR-023 v1.5 / api-spec v1.2.1 / §12.7）：`fact show <12位>` 对常规录入必须唯一命中；
+   只有**同毫秒创建**或**人为输入 4–11 位更短前缀**才允许歧义，且必须退出码 4 +
+   `VALIDATION_AMBIGUOUS_REFERENCE` + 候选列表，**禁止静默取第一个**。实现与测试已按此对齐；
+   自动类别 key 同步 `c-<前 12 位>`（如 `c-0190a1b23c4d`，总长 14 ≤ 32）。
 2. **格式断代**：用户旧 `~/.fasti`（v1）会被明确拒绝；迁移由 Lead/用户执行（Lead 已备份
    `~/fasti-backup-v1/`），本轮未触碰任何真实用户数据目录，也未提供自动迁移命令（ADR-024 明确
    P0 只保留格式门与迁移说明，不把一次性迁移器放进产品代码）。
@@ -774,5 +789,6 @@ $ find fasti tests … | xargs wc -l | tail -1                      # 7339 total
 
 - 全部实现位于 `workspace/`；`artifacts/`（规范/契约/DDL 源）与 `briefs/` 均未修改。
 - 本轮**未写入用户 `~/.fasti`**；旧数据拒绝为预期的断代行为，迁移由 Lead 执行。
-- **等待 QA 独立验证**：以上为开发侧自测结论。QA 复验口径见 `architecture.md §12.7`，并请对 §9.5-1
-  的短 ID 歧义口径与架构师/Lead 对齐后再判定「8 位短前缀唯一命中」类用例。
+- **等待 QA 独立验证**：以上为开发侧自测结论。QA 复验按 `architecture.md §12.7`（v1.5 修订）：
+  常规录入的 `fact show <12 位>` 应唯一命中；同毫秒/4–11 位短前缀才允许 `VALIDATION_AMBIGUOUS_REFERENCE`
+  （退出码 4 + 候选列表，禁止静默取第一个）。
