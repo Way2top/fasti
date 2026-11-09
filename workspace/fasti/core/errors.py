@@ -27,7 +27,8 @@ EXIT_CODES = {
     "CONFLICT_PORT_IN_USE": 5,
     # 领域校验
     "VALIDATION_MISSING_VALID_FROM": 4,
-    "VALIDATION_INVALID_MONTH": 4,
+    "VALIDATION_INVALID_VALID_FROM": 4,
+    "VALIDATION_INVALID_AT": 4,
     "VALIDATION_CHANGE_TYPE_REQUIRED": 4,
     "VALIDATION_INVALID_CHANGE_TYPE": 4,
     "VALIDATION_UNEXPECTED_VALID_FROM": 4,
@@ -82,7 +83,14 @@ DEFAULT_MESSAGES = {
     "CONFLICT_STORE_LOCKED": "另一个 fasti 写命令正在执行，写锁在 5 秒内未能获取",
     "CONFLICT_PORT_IN_USE": "监听端口已被占用；请改用 --port 0（由系统分配）或其他端口",
     "VALIDATION_MISSING_VALID_FROM": "缺少生效时间：请提供「从何时起为真」（--valid-from YYYY-MM）",
-    "VALIDATION_INVALID_MONTH": "生效时间格式不合法，应为 YYYY-MM（或 YYYY-MM-DD）",
+    "VALIDATION_INVALID_VALID_FROM": (
+        "生效时间无法解析：必须为 YYYY-MM / YYYY-MM-DD / YYYY-MM-DDTHH:MM[:SS] 三档之一"
+        "（不接受时区后缀/小数秒/不存在日期）"
+    ),
+    "VALIDATION_INVALID_AT": (
+        "查询时点无法解析：必须为 YYYY-MM / YYYY-MM-DD / YYYY-MM-DDTHH:MM[:SS] 三档之一"
+        "（粗粒度按粒度起点解释；不接受时区后缀/小数秒/不存在日期）"
+    ),
     "VALIDATION_CHANGE_TYPE_REQUIRED": "必须选择变更类型：演进（evolve）或纠正（correct）",
     "VALIDATION_INVALID_CHANGE_TYPE": "变更类型不合法；可选值：evolve（演进）/ correct（纠正）",
     "VALIDATION_UNEXPECTED_VALID_FROM": "纠正不得改变生效时间，请移除 --valid-from",
@@ -97,7 +105,10 @@ DEFAULT_MESSAGES = {
     "VALIDATION_CATEGORY_NAME_TAKEN": "类别名称已被占用",
     "VALIDATION_CATEGORY_ALREADY_DELETED": "类别已删除，不能再执行该操作",
     "VALIDATION_AMBIGUOUS_REFERENCE": "引用可匹配多个对象，请使用更精确的 ID",
-    "VALIDATION_VALID_FROM_NOT_AFTER_PREVIOUS": "新的生效时间必须晚于被演进段的生效时间",
+    "VALIDATION_VALID_FROM_NOT_AFTER_PREVIOUS": (
+        "新的生效时间必须晚于被演进段的生效时间：请改用更晚的显式时刻；"
+        "同月/同日的粗粒度输入可省略时分秒，由系统按当前时刻记录"
+    ),
     "VALIDATION_EVOLVE_TARGET_NOT_HEAD": "演进只能针对该命题线当前最新的事实段",
     "VALIDATION_FACT_DELETED": "该事实已删除，不能执行变更",
     "VALIDATION_FACT_ALREADY_DELETED": "该事实已删除，不能重复删除",
@@ -109,8 +120,9 @@ DEFAULT_MESSAGES = {
     "CORRUPT_MANIFEST": "派生状态清单 state/manifest.json 无法解析",
     "IMPORT_INVALID_MANIFEST": "导入 bundle 的 manifest.json 缺失或字段不合法",
     "IMPORT_UNSUPPORTED_FORMAT_VERSION": (
-        "不支持的导出格式版本（当前支持版本 %d）：v1 导出包需先完成 UUIDv7 迁移"
-        "（见 architecture.md §12.5），再用当前版本重新导出" % constants.FORMAT_VERSION
+        "不支持的导出格式版本（当前支持版本 %d）：旧格式（v1/v2）导出包需先迁移"
+        "（见 architecture.md §12.5 / §13.5；v2→v3 使用 scripts/migrate_v2_to_v3.py），"
+        "再用当前版本重新导出" % constants.FORMAT_VERSION
     ),
     "IMPORT_INVALID_RECORD": "导入记录结构不合法",
     "IMPORT_SEMANTIC_INVALID": "导入事件语义校验失败",

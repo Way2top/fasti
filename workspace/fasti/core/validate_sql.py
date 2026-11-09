@@ -71,7 +71,7 @@ def check_sql_constraints(model):
         for fact_id in model.fact_order:
             fact = model.facts[fact_id]
             conn.execute(
-                "INSERT INTO fact (fact_id, line_id, valid_from, valid_to_month, change_type,"
+                "INSERT INTO fact (fact_id, line_id, valid_from, valid_to, change_type,"
                 " previous_fact_id, source, recorded_at, deleted_at)"
                 " VALUES (?,?,?,?,?,?,?,?,?)",
                 (fact["fact_id"], fact["line_id"], fact["valid_from"], fact["valid_to"],
@@ -87,7 +87,7 @@ def check_sql_constraints(model):
                      revision["revision_type"], revision["note"], revision["recorded_at"]),
                 )
         conn.execute("COMMIT")
-        return True, "内存 SQLite 执行 database-schema.sql（schema_version 2）约束通过"
+        return True, "内存 SQLite 执行 database-schema.sql（schema_version 3）约束通过"
     except sqlite3.IntegrityError as exc:
         try:
             conn.execute("ROLLBACK")

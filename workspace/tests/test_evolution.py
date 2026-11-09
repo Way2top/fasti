@@ -1,4 +1,4 @@
-"""AC-3-1/3-2/3-4/4-1~4-4/1-4：演进 vs 纠正、回溯与删除（v2 UUIDv7）。"""
+"""AC-3-1/3-2/3-4/4-1~4-4/1-4：演进 vs 纠正、回溯与删除（v3：秒级生效时间 + 同桶 auto-bump）。"""
 
 import unittest
 
@@ -21,7 +21,9 @@ class TestEvolutionVsCorrection(BaseStoreTest):
         self.assertNotEqual(new_fact["fact_id"], self.fact_id)      # 演进产生新 fact_id
         self.assertEqual(new_fact["line_id"], self.line_id)          # 同 line
         self.assertEqual(new_fact["previous_fact_id"], self.fact_id)
-        self.assertEqual(new_fact["valid_from"], "2026-11")
+        self.assertEqual(new_fact["valid_from"], "2026-11-01T00:00:00+08:00")
+        self.assertEqual(new_fact["valid_to"], None)
+        self.assertFalse(evolved["auto_bumped"])
         self.assertEqual(new_fact["change_type"], "evolve")
 
         # 纠正只作用于旧段：区间不变、fact_id 不变、revision_seq + 1
@@ -29,7 +31,8 @@ class TestEvolutionVsCorrection(BaseStoreTest):
                                     "主力语言：Java", None, "2025-01~2026-10 实际是 Java")
         self.assertEqual(corrected["change_type"], "correct")
         self.assertEqual(corrected["fact"]["fact_id"], self.fact_id)
-        self.assertEqual(corrected["fact"]["valid_from"], "2025-01")
+        self.assertEqual(corrected["fact"]["valid_from"],
+                         "2025-01-01T00:00:00+08:00")
         self.assertEqual(corrected["revision"]["seq"], 2)
         revisions = api.show_fact(self.data_dir, self.fact_id)["revisions"]
         self.assertEqual([revision["seq"] for revision in revisions], [1, 2])
@@ -48,14 +51,58 @@ class TestEvolutionVsCorrection(BaseStoreTest):
         self.assertEqual([item["content"] for item in at_view["items"]],
                          ["主力语言：Java"])
         self.assertIn("基于当前已知事实", at_view["notices"][0])
+        self.assertIn("实际查询瞬间：2026-06-01T00:00:00+08:00", at_view["notices"][1])
         # 区间：Python/Java 段显示 2025-01 至 2026-10
         history = api.get_history(self.data_dir)
         entries = history["groups"][0]["entries"]
         old = [entry for entry in entries if entry["fact_id"] == self.fact_id][0]
+        self.assertEqual(old["valid_from"], "2025-01-01T00:00:00+08:00")
         self.assertEqual(old["display_end"], "2026-10")
         self.assertEqual(old["corrections"][0]["old_content"], "主力语言：Python")
         history_text = api.history_text(history)
         self.assertNotIn("- 主力语言：Python（", history_text)
+
+    def test_same_month_evolve_is_auto_bumped(self):
+        """C-07 撞墙场景：head 在 2026-11 内，再演进 --valid-from 2026-11 ⇒ 自动按当前时刻接受。"""
+        api.delete_fact(self.data_dir, api.short_id(self.fact_id))
+        first = api.add_fact(self.data_dir, "tech", "同月事实", "2026-11")["fact"]
+        evolved = api.change_fact(self.data_dir, api.short_id(first["fact_id"]),
+                                  "evolve", "同月事实 · 更晚", "2026-11")
+        self.assertEqual(evolved["change_type"], "evolve")
+        self.assertTrue(evolved["auto_bumped"])
+        self.assertGreater(evolved["fact"]["valid_from"], first["valid_from"])
+        self.assertIn("已在同月/同日之后，按当前时刻 2026-11-10T00:05:00 记录",
+                      evolved["warnings"])
+        history = api.get_history(self.data_dir)
+        entries = history["groups"][0]["entries"]
+        old = [entry for entry in entries if entry["fact_id"] == first["fact_id"]][0]
+        self.assertEqual(old["valid_from"], "2026-11-01T00:00:00+08:00")
+        self.assertEqual(old["valid_to"], "2026-11-10T00:05:00+08:00")
+        self.assertEqual(old["display_end"], "2026-11-10T00:04:59")
+        # 粗粒度 --at 2026-11 = 桶起点 ⇒ 旧值；精确到新时刻 ⇒ 新值
+        at_bucket = api.get_profile_at(self.data_dir, "2026-11")
+        self.assertEqual([item["content"] for item in at_bucket["items"]],
+                         ["同月事实"])
+        at_exact = api.get_profile_at(self.data_dir, "2026-11-10T00:05:00")
+        self.assertEqual([item["content"] for item in at_exact["items"]],
+                         ["同月事实 · 更晚"])
+
+    def test_zero_length_and_earlier_bucket_rejected(self):
+        """显式输入不得零长区间；粗输入回溯到更早桶仍拒绝（不静默改写明确意图）。"""
+        api.delete_fact(self.data_dir, api.short_id(self.fact_id))
+        first = api.add_fact(self.data_dir, "tech", "x", "2026-11")["fact"]
+        from fasti.core import errors
+        with self.assertRaises(errors.CoreError) as ctx:
+            api.change_fact(self.data_dir, api.short_id(first["fact_id"]), "evolve", "y",
+                            "2026-11-01T00:00:00")
+        self.assertEqual(ctx.exception.code, "VALIDATION_VALID_FROM_NOT_AFTER_PREVIOUS")
+        self.assertIn("必须晚于", ctx.exception.message)
+        with self.assertRaises(errors.CoreError) as ctx:
+            api.change_fact(self.data_dir, api.short_id(first["fact_id"]), "evolve", "y",
+                            "2025-06")
+        self.assertEqual(ctx.exception.code, "VALIDATION_VALID_FROM_NOT_AFTER_PREVIOUS")
+        # 失败不落盘
+        self.assertEqual(len(api.list_facts(self.data_dir)["items"]), 1)
 
     def test_at_no_record(self):
         self.assertEqual(api.get_profile_at(self.data_dir, "2024-01")["items"], [])

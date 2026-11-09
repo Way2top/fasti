@@ -9,6 +9,7 @@ SQL 表达力之外的部分（ADR-009 的两层校验中的第二层）：
 
 import re
 
+from . import clock
 from . import constants
 from . import ids
 
@@ -85,6 +86,17 @@ def check_invariants(model):
         line = model.lines[fact["line_id"]]
         if fact["category_key"] != line["category_key"]:
             problems.append("事实 %s 的类别与命题线不一致" % fact["fact_id"])
+        # C-07：valid_from / valid_to 必须是完整 RFC3339 秒级时间戳，且 valid_to > valid_from
+        if not clock.is_valid_time(fact["valid_from"]):
+            problems.append("事实 %s 的 valid_from 不是完整时间戳：%r"
+                            % (fact["fact_id"], fact["valid_from"]))
+        if fact["valid_to"] is not None:
+            if not clock.is_valid_time(fact["valid_to"]):
+                problems.append("事实 %s 的 valid_to 不是完整时间戳：%r"
+                                % (fact["fact_id"], fact["valid_to"]))
+            elif clock.compare(fact["valid_to"], fact["valid_from"]) <= 0:
+                problems.append("事实 %s 的 valid_to 未晚于 valid_from（零长/负区间）"
+                                % fact["fact_id"])
         revisions = model.revisions_of(fact["fact_id"])
         if not revisions:
             problems.append("事实 %s 缺少修订" % fact["fact_id"])
@@ -123,22 +135,22 @@ def check_invariants(model):
             else:
                 if previous["line_id"] != fact["line_id"]:
                     problems.append("事实 %s 的演进链跨了命题线" % fact["fact_id"])
-                if not (fact["valid_from"] > previous["valid_from"]):
+                if clock.compare(fact["valid_from"], previous["valid_from"]) <= 0:
                     problems.append("事实 %s 的演进未严格晚于前段" % fact["fact_id"])
 
-    # 4) 同一 line 内未删除段 valid_from 严格递增 + 派生 valid_to 正确
+    # 4) 同一 line 内未删除段生效瞬间严格递增 + 派生 valid_to 正确（C-07：按瞬间）
     for line in model.lines.values():
         segments = model.line_facts(line["line_id"])
         alive_facts = [fact for fact in segments if fact["deleted_at"] is None]
-        alive_months = [fact["valid_from"] for fact in alive_facts]
-        if alive_months != sorted(set(alive_months)):
-            problems.append("命题线 %s 存在重复或乱序的生效月" % line["line_id"])
+        alive_starts = [clock.instant(fact["valid_from"]) for fact in alive_facts]
+        if alive_starts != sorted(set(alive_starts)):
+            problems.append("命题线 %s 存在重复或乱序的生效瞬间" % line["line_id"])
         for fact in segments:
             expected = None
             later = [item["valid_from"] for item in alive_facts
-                     if item["valid_from"] > fact["valid_from"]]
+                     if clock.compare(item["valid_from"], fact["valid_from"]) > 0]
             if later:
-                expected = min(later)
+                expected = min(later, key=clock.instant)
             if fact["valid_to"] != expected:
                 problems.append("事实 %s 的派生 valid_to 不一致（期望 %r，实际 %r）"
                                 % (fact["fact_id"], expected, fact["valid_to"]))

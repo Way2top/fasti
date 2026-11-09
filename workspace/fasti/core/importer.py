@@ -52,12 +52,13 @@ def _read_manifest(bundle_dir):
     if format_version != constants.FORMAT_VERSION:
         raise errors.make(
             "IMPORT_UNSUPPORTED_FORMAT_VERSION",
-            "不支持的导出格式版本 %d（当前支持版本 %d）：v1 导出包需先完成 UUIDv7 迁移"
-            "（见 architecture.md §12.5：清空重建或一次性事件改写器），再用当前版本重新导出"
+            "不支持的导出格式版本 %d（当前支持版本 %d）：旧格式（v1/v2）导出包需先迁移"
+            "（v2→v3 见 architecture.md §13.5：运行 scripts/migrate_v2_to_v3.py），"
+            "再用当前版本重新导出"
             % (format_version, constants.FORMAT_VERSION),
             details={"format_version": format_version,
                      "supported": constants.FORMAT_VERSION,
-                     "migration": "architecture.md §12.5"},
+                     "migration": "architecture.md §13.5"},
             location=path,
         )
     payload = manifest.get("payload")

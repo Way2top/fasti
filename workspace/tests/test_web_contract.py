@@ -70,6 +70,8 @@ WHITELIST = {
         (None, "类别写操作返回 data.category（Category 对象；其字段由 item./category. 扫描覆盖）"),
     ("data", "fact"):
         (None, "事实写操作返回 data.fact（Fact 对象；其字段由 fact. 扫描覆盖）"),
+    ("data", "auto_bumped"):
+        (None, "fact.add / fact.change 返回 data.auto_bumped（本工具响应扩展字段，非领域对象）"),
     ("data", "change_type"):
         (None, "fact.change 返回 data.change_type（FactChangeType）"),
     ("data", "text"):

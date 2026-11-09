@@ -1,4 +1,4 @@
-"""画像与历史视图（C5，v2）：纯函数，确定性渲染（ADR-008 / ADR-023）。
+"""画像与历史视图（C5，v3）：纯函数，确定性渲染（ADR-008 / ADR-023 / ADR-025）。
 
 - 不读时钟、不读网络、不读 dist/ 或 profile/、不依赖上一次派生结果；
 - profile_body（含「（未录入）」）与 host_body（仅含有内容的类别）由同一视图生成；
@@ -13,10 +13,10 @@ from . import ids
 EMPTY_MARKER = "（未录入）"
 PROFILE_TITLE = "# 当前画像"
 PROFILE_NOTICE = "> 由 fasti 生成，请勿手工修改；修改事实后请运行 recompute 或 render。"
-AT_NOTICE = ("结果基于当前已知事实按生效时间回溯（有效时间，月精度，区间左闭右开），"
+AT_NOTICE = ("结果基于当前已知事实按生效时间回溯（有效时间，秒精度，区间左闭右开），"
              "不代表该时点的历史认知。")
 HISTORY_TITLE = "# 历史记录"
-HISTORY_NOTICE = "> 由 fasti 生成，勿手工修改；按变更时间倒序（最新在前）；区间为生效时间（月精度，左闭右开）。"
+HISTORY_NOTICE = "> 由 fasti 生成，勿手工修改；按变更时间倒序（最新在前）；区间为生效时间（秒精度，左闭右开）。"
 HISTORY_CATEGORY_EVENTS_TITLE = "## 类别变更"
 AT_EMPTY_TEXT = "该时点无记录"
 
@@ -89,22 +89,27 @@ def build_profile_view(model, category_key=None, trace=False):
     }
 
 
-def _at_fact_for_line(model, line_id, at):
-    """取满足 valid_from <= at < valid_to 的未删除事实段；无匹配返回 None。"""
+def _at_fact_for_line(model, line_id, at_value):
+    """取满足 valid_from <= at < valid_to 的未删除事实段（按瞬间比较）；无匹配返回 None。"""
     for fact in model.alive_line_facts(line_id):
-        if fact["valid_from"] <= at and (fact["valid_to"] is None or at < fact["valid_to"]):
+        start = clock.compare(fact["valid_from"], at_value) <= 0
+        end_ok = fact["valid_to"] is None or clock.compare(at_value, fact["valid_to"]) < 0
+        if start and end_ok:
             return fact
     return None
 
 
-def build_profile_at_view(model, at, category_key=None):
-    """时点回溯视图（kind=at）：valid-time + 当前已知知识。"""
+def build_profile_at_view(model, at_input, at_value, category_key=None):
+    """时点回溯视图（kind=at）：valid-time + 当前已知知识。
+
+    `at` 字段保留原样查询输入（三档之一）；匹配按 `at_value`（粒度起点瞬间）比较。
+    """
     categories = []
     items = []
     for category in _selected_categories(model, category_key):
         matched = []
         for line in model.ordered_lines(category["key"]):
-            fact = _at_fact_for_line(model, line["line_id"], at)
+            fact = _at_fact_for_line(model, line["line_id"], at_value)
             if fact is not None:
                 matched.append((line, fact))
         categories.append(_category_slot(category, bool(matched)))
@@ -112,11 +117,14 @@ def build_profile_at_view(model, at, category_key=None):
             items.append(_profile_item(category, line, fact))
     return {
         "kind": "at",
-        "at": at,
+        "at": at_input,
         "categories": categories,
         "items": items,
         "trace": None,
-        "notices": [AT_NOTICE],
+        "notices": [
+            AT_NOTICE,
+            "实际查询瞬间：%s（粗粒度输入按粒度起点解释）。" % at_value,
+        ],
     }
 
 
@@ -250,7 +258,7 @@ def render_at_text(view):
     if not view["items"]:
         return AT_EMPTY_TEXT + "\n"
     grouped = _items_by_category(view)
-    lines = ["# 画像回溯 · %s" % view["at"], ""]
+    lines = ["# 画像回溯 · %s" % clock.display_input_at(view["at"]), ""]
     for notice in view["notices"]:
         lines.append("> " + notice)
     lines.append("")
@@ -261,7 +269,8 @@ def render_at_text(view):
         lines.append("## " + slot["display_name"])
         for item in items:
             lines.append("- %s（%s 至 %s）" % (
-                item["content"], item["valid_from"], clock.display_end(item["valid_to"])))
+                item["content"], clock.display_time(item["valid_from"]),
+                clock.display_end(item["valid_to"])))
     return "\n".join(lines) + "\n"
 
 
@@ -270,7 +279,8 @@ def _history_entry_lines(entry):
     if entry["deleted_at"] is not None:
         prefix = "（已删除 %s）" % entry["deleted_at"]
     lines = ["- %s%s（%s 至 %s）" % (prefix, entry["content"],
-                                     entry["valid_from"], entry["display_end"])]
+                                     clock.display_time(entry["valid_from"]),
+                                     entry["display_end"])]
     lines.append("  ↳ 变更：%s（%s）" % (entry["change_kind"], entry["recorded_at"]))
     for correction in entry["corrections"]:
         lines.append("  ↳ 纠正（%s）：原内容「%s」"

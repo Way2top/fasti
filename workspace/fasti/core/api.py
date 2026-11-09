@@ -48,6 +48,7 @@ from .services.views import (
     render_hosts,
 )
 from .services.verify import verify
+from .clock import display_end, display_time
 from .ids import short_id
 
 __all__ = [
@@ -65,6 +66,8 @@ __all__ = [
     "WARN_RENDER",
     "WARN_RECOMPUTE",
     "short_id",
+    "display_time",
+    "display_end",
     # 20 个应用服务函数（api-spec.yaml core_api.functions）
     "init_store",
     "get_status",

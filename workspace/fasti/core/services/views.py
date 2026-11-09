@@ -38,15 +38,11 @@ def get_profile(data_dir, category=None, trace=False):
 def get_profile_at(data_dir, at, category=None):
     data_dir = os.path.abspath(data_dir)
     _, _, model = _load_model(data_dir)
-    if at is None:
-        raise errors.make("VALIDATION_MISSING_VALID_FROM",
-                          "缺少查询时点：请提供 --at YYYY-MM",
-                          details={"field": "at"})
-    month = validate.require_month(at, field="at")
-    if month is not None and not clock.is_month(month):
-        raise errors.make("VALIDATION_INVALID_MONTH", details={"field": "at"})
+    now = clock.now_local()
+    normalized = validate.require_at(at, now)
     category_key = _category_key_arg(model, category)
-    return profile_module.build_profile_at_view(model, month, category_key=category_key)
+    return profile_module.build_profile_at_view(
+        model, at, normalized["value"], category_key=category_key)
 
 
 def get_history(data_dir, category=None):

@@ -29,8 +29,8 @@
         <input name="content" maxlength="2000" placeholder="如：主力语言：C++">
         <span class="err" data-field="content"></span>
       </label>
-      <label>从何时起为真（YYYY-MM）
-        <input name="valid_from" placeholder="2026-11">
+      <label>从何时起为真（YYYY-MM / YYYY-MM-DD / YYYY-MM-DDTHH:MM[:SS]）
+        <input name="valid_from" placeholder="2026-11 或 2026-11-09T23:50:00">
         <span class="err" data-field="valid_from"></span>
       </label>
       <div class="row">
@@ -60,8 +60,8 @@
         <span class="err" data-field="content"></span>
       </label>
       <div class="row">
-        <label>新的生效时间（仅演进需要，YYYY-MM）
-          <input name="valid_from" placeholder="2026-11">
+        <label>新的生效时间（仅演进需要，YYYY-MM / YYYY-MM-DD / YYYY-MM-DDTHH:MM[:SS]）
+          <input name="valid_from" placeholder="2026-11 或 2026-11-09T23:50:00">
           <span class="err" data-field="valid_from"></span>
         </label>
         <label>备注（仅纠正可用，可选）
@@ -92,10 +92,10 @@
   </section>
 
   <section>
-    <h2>时点回溯 <span class="hint">按生效时间（月精度，左闭右开），基于当前已知事实</span></h2>
+    <h2>时点回溯 <span class="hint">按生效时间（秒精度，左闭右开；粗粒度按粒度起点解释），基于当前已知事实</span></h2>
     <form id="at-form" novalidate>
       <div class="row">
-        <label>查询时点（YYYY-MM）
+        <label>查询时点（YYYY-MM / YYYY-MM-DD / YYYY-MM-DDTHH:MM[:SS]）
           <input name="at" placeholder="2026-06">
           <span class="err" data-field="at"></span>
         </label>

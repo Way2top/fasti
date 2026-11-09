@@ -14,10 +14,15 @@ def _cmd_fact_add(args, data_dir):
     fact = result["fact"]
     line = result["line"]
     display = result["_extra"].get("category_display_name", line["category_key"])
-    text = "已录入 fact %s（line %s · %s · 生效 %s）\n提示：fasti render" % (
+    text = "已录入 fact %s（line %s · %s · 生效 %s）" % (
         api.short_id(fact["fact_id"]), api.short_id(line["line_id"]), display,
-        fact["valid_from"])
-    _emit("fact.add", _select(result, ["fact", "line"]), text, result.get("warnings"))
+        api.display_time(fact["valid_from"]))
+    if result.get("auto_bumped"):
+        text += "\n已在同月/同日之后，按当前时刻 %s 记录" % api.display_time(
+            fact["valid_from"])
+    text += "\n提示：fasti render"
+    _emit("fact.add", _select(result, ["fact", "line", "auto_bumped"]), text,
+          result.get("warnings"))
     return 0
 
 
@@ -35,10 +40,15 @@ def _cmd_fact_change(args, data_dir):
         text = "纠正：已纠正 fact %s（第 %d 次修订）\n提示：fasti render" % (
             api.short_id(fact["fact_id"]), result["_extra"]["revision_seq"])
     else:
-        text = "演进：已追加 fact %s（line %s · 生效 %s）\n提示：fasti render" % (
+        text = "演进：已追加 fact %s（line %s · 生效 %s）" % (
             api.short_id(fact["fact_id"]), api.short_id(fact["line_id"]),
-            fact["valid_from"])
-    _emit("fact.change", _select(result, ["change_type", "fact", "revision"]),
+            api.display_time(fact["valid_from"]))
+        if result.get("auto_bumped"):
+            text += "\n已在同月/同日之后，按当前时刻 %s 记录" % api.display_time(
+                fact["valid_from"])
+        text += "\n提示：fasti render"
+    _emit("fact.change", _select(result, ["change_type", "fact", "revision",
+                                          "auto_bumped"]),
           text, result.get("warnings"))
     return 0
 
@@ -60,7 +70,8 @@ def _cmd_fact_list(args, data_dir):
         lines.append("%s | %s | %s | %s | %s | %s | %s" % (
             api.short_id(fact["fact_id"]), api.short_id(fact["line_id"]),
             fact["category_key"],
-            fact["valid_from"], fact["content"], fact["change_type"], fact["recorded_at"]))
+            api.display_time(fact["valid_from"]), fact["content"],
+            fact["change_type"], fact["recorded_at"]))
     if not result["items"]:
         lines.append("（无）")
     lines.append("共 %d 条（返回 %d 条）"
@@ -83,7 +94,7 @@ def _cmd_fact_show(args, data_dir):
         "内容：%s" % fact["content"],
         "来源：用户录入（%s）" % fact["source"],
         "首次录入：%s" % fact["recorded_at"],
-        "生效：%s 至 %s" % (fact["valid_from"], display_end),
+        "生效：%s 至 %s" % (api.display_time(fact["valid_from"]), display_end),
         "变更类型：%s" % fact["change_type"],
         "删除状态：%s" % (("已删除（%s）" % fact["deleted_at"])
                           if fact["deleted_at"] else "未删除"),

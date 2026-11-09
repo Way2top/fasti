@@ -13,7 +13,7 @@ from urllib import error as urlerror
 from urllib import request as urlrequest
 
 from _base import _sha, ROOT
-from fasti.core import api
+from fasti.core import api, clock
 
 UUID7_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 
@@ -82,6 +82,29 @@ class TestCliAndWeb(unittest.TestCase):
         # 完整形式同样可作入参
         self.assertEqual(self._run("fact", "show", fact_id).returncode, 0)
 
+    def test_cli_time_display_and_auto_bump(self):
+        """C-07：粗粒度输入显示仍为月；同月再演进自动按当前时刻提升（auto_bumped）。"""
+        self.assertEqual(self._run("init").returncode, 0)
+        month = clock.now_local().strftime("%Y-%m")
+        added = self._run("fact", "add", "--category", "tech", "--content", "x",
+                          "--valid-from", month)
+        self.assertEqual(added.returncode, 0)
+        self.assertIn("生效 %s）" % month, added.stdout)          # 自适应显示=月
+        self.assertIn("提示：fasti render", added.stdout)
+        short = re.search(r"已录入 fact ([0-9a-f]{12})", added.stdout).group(1)
+        evolved = self._run("fact", "evolve", short, "--content", "y",
+                            "--valid-from", month)
+        self.assertEqual(evolved.returncode, 0)
+        self.assertIn("已在同月/同日之后，按当前时刻", evolved.stdout)
+        payload = json.loads(self._run("--json", "fact", "show", short).stdout)
+        full = payload["data"]["fact"]["valid_from"]
+        self.assertRegex(full, r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$")
+        # --at 粗粒度 = 桶起点：月初时点看到的是演进前的值
+        at = self._run("profile", "at", "--at", month)
+        self.assertEqual(at.returncode, 0)
+        self.assertIn("- x（%s 至 " % month, at.stdout)
+        self.assertIn("实际查询瞬间：%s-01T00:00:00" % month, at.stdout)
+
     # ------------------------------------------------------------- Web
     def test_web_endpoints_and_security(self):
         from fasti.adapters import web
@@ -128,6 +151,14 @@ class TestCliAndWeb(unittest.TestCase):
             status, rendered = fetch("/api/render", "POST", {"host": "all"})
             self.assertEqual(status, 200)
             self.assertGreater(rendered["data"]["host_body_bytes"], 0)
+            # C-07：同月粗输入再演进 ⇒ auto_bumped=true + warnings 明示实际时刻
+            status, evolved = fetch("/api/facts/%s/change" % short, "POST",
+                                    {"change_type": "evolve",
+                                     "content": "主力语言：Rust",
+                                     "valid_from": clock.now_local().strftime("%Y-%m")})
+            self.assertEqual(status, 200)
+            self.assertTrue(evolved["data"]["auto_bumped"])
+            self.assertTrue(evolved["data"]["warnings"])
             # 类别以 key 为身份（无 category_id）
             status, categories = fetch("/api/categories")
             self.assertEqual([item["key"] for item in categories["data"]["items"]][:2],

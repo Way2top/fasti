@@ -52,7 +52,7 @@ fasti import <bundle 目录>
 
 - 形状级对齐：Markdown + YAML frontmatter、一概念一文件、路径即概念 ID、根 `index.md`、按时间排列的 `log.md`、纯 Markdown 相对链接。
 - 已知缺口：OKF 没有版本链 / `supersedes` / 有效区间 / 纠正语义，无法无损表达「演进 vs 纠正」。
-- 本工具的扩展 frontmatter 字段（不属于 OKF 核心字段）：`fact_id`、`line_id`、`category`、`valid_from`、`valid_to`、`updated_at`。
+- 本工具的扩展 frontmatter 字段（不属于 OKF 核心字段）：`fact_id`、`line_id`、`category`、`valid_from`、`valid_to`、`updated_at`（v3 起 valid_from/valid_to 为完整 RFC3339）
 
 ## 版本
 
@@ -109,7 +109,8 @@ def _concept_md(model, category, line):
         "",
     ]
     if head is not None:
-        lines.append("当前值（自 %s 起）：%s" % (head["valid_from"], head["content"]))
+        lines.append("当前值（自 %s 起）：%s" % (clock.display_time(head["valid_from"]),
+                                              head["content"]))
     else:
         lines.append("当前值：无（该命题线没有未删除事实）")
     lines.append("")
@@ -120,7 +121,8 @@ def _concept_md(model, category, line):
         if fact["deleted_at"] is not None:
             prefix = "（已删除 %s）" % fact["deleted_at"]
         lines.append("- %s%s 至 %s：%s" % (
-            prefix, fact["valid_from"], clock.display_end(fact["valid_to"]), fact["content"]))
+            prefix, clock.display_time(fact["valid_from"]),
+            clock.display_end(fact["valid_to"]), fact["content"]))
         revisions = model.revisions_of(fact["fact_id"])
         lines.append("  - 首次录入 %s" % revisions[0]["recorded_at"])
         for revision in revisions[1:]:

@@ -8,7 +8,8 @@ from .validate_fields import (
     require_category_key,
     require_category_name,
     require_content,
-    require_month,
+    require_at,
+    require_valid_from,
     require_note,
 )
 from .validate_events import validate_event_record
@@ -18,7 +19,8 @@ from .validate_sql import check_sql_constraints, load_schema_sql, schema_path
 __all__ = [
     "require_content",
     "require_note",
-    "require_month",
+    "require_at",
+    "require_valid_from",
     "require_category_name",
     "require_category_key",
     "validate_event_record",

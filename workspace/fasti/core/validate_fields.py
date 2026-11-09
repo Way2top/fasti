@@ -56,18 +56,27 @@ def require_note(value):
     return text
 
 
-def require_month(value, field="valid_from"):
-    """生效时间：接受 YYYY-MM 或 YYYY-MM-DD（截断到月）；否则 VALIDATION_INVALID_MONTH。"""
+def require_valid_from(value, now):
+    """生效时间三档输入 → 规范化结果（C-07 / ADR-025）。
+
+    返回 {value, precision, naive, dt, offset}（见 clock.normalize_valid_time）。
+    缺省 ⇒ VALIDATION_MISSING_VALID_FROM；非法 ⇒ VALIDATION_INVALID_VALID_FROM。
+    """
     if value is None:
-        raise errors.make("VALIDATION_MISSING_VALID_FROM", details={"field": field})
-    normalized = clock.normalize_month(value)
-    if normalized is None:
-        raise errors.make(
-            "VALIDATION_INVALID_MONTH",
-            "生效时间格式不合法：%r，应为 YYYY-MM" % (value,),
-            details={"field": field, "value": value},
-        )
-    return normalized
+        raise errors.make("VALIDATION_MISSING_VALID_FROM", details={"field": "valid_from"})
+    return clock.normalize_valid_time(value, now, field="valid_from",
+                                      invalid_code="VALIDATION_INVALID_VALID_FROM")
+
+
+def require_at(value, now):
+    """--at 三档输入 → {value(完整时间戳), precision, ...}（粗粒度=粒度起点）。"""
+    if value is None:
+        raise errors.make("VALIDATION_MISSING_VALID_FROM",
+                          "缺少查询时点：请提供 --at YYYY-MM / YYYY-MM-DD / "
+                          "YYYY-MM-DDTHH:MM[:SS]",
+                          details={"field": "at"})
+    return clock.normalize_valid_time(value, now, field="at",
+                                      invalid_code="VALIDATION_INVALID_AT")
 
 
 def require_category_name(value):

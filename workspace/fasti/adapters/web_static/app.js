@@ -3,6 +3,16 @@
   var TOKEN = new URLSearchParams(window.location.search).get("t") || "";
   var categoryNames = {};
 
+  function displayTime(value) {
+    if (!value) { return ""; }
+    var day = value.slice(8, 10);
+    var clockPart = value.slice(11, 19);
+    if (clockPart === "00:00:00") {
+      return day === "01" ? value.slice(0, 7) : value.slice(0, 10);
+    }
+    return value.slice(0, 19);
+  }
+
   function call(path, options) {
     options = options || {};
     var headers = { "X-Fasti-Token": TOKEN };
@@ -189,7 +199,7 @@
         option.value = fact.fact_id;
         var categoryName = categoryNames[fact.category_key] || fact.category_key;
         var content = fact.content.length > 40 ? fact.content.slice(0, 40) + "…" : fact.content;
-        option.textContent = fact.fact_id.replace(/-/g, "").slice(0, 12) + " · " + categoryName + " · 自 " + fact.valid_from + " · " + content;
+        option.textContent = fact.fact_id.replace(/-/g, "").slice(0, 12) + " · " + categoryName + " · 自 " + displayTime(fact.valid_from) + " · " + content;
         select.appendChild(option);
       });
     });
@@ -198,7 +208,7 @@
   function loadAt() {
     var form = document.getElementById("at-form");
     var at = form.at.value.trim();
-    if (!at) { showError(form, { code: "VALIDATION_MISSING_VALID_FROM", message: "请填写查询时点（YYYY-MM）", details: { field: "at" } }); return; }
+    if (!at) { showError(form, { code: "VALIDATION_MISSING_VALID_FROM", message: "请填写查询时点（YYYY-MM / YYYY-MM-DD / YYYY-MM-DDTHH:MM[:SS]）", details: { field: "at" } }); return; }
     clearErrors(form);
     call("/api/profile/at?at=" + encodeURIComponent(at)).then(function (data) {
       document.getElementById("at-text").textContent = data.text;
@@ -227,7 +237,7 @@
     var missing = null;
     if (!body.category) { missing = { field: "category", message: "请选择类别" }; }
     else if (!body.content.trim()) { missing = { field: "content", message: "请填写内容" }; }
-    else if (!body.valid_from.trim()) { missing = { field: "valid_from", message: "请填写从何时起为真（YYYY-MM）" }; }
+    else if (!body.valid_from.trim()) { missing = { field: "valid_from", message: "请填写从何时起为真（YYYY-MM / YYYY-MM-DD / YYYY-MM-DDTHH:MM[:SS]）" }; }
     if (missing) {
       showError(form, {
         code: missing.field === "valid_from" ? "VALIDATION_MISSING_VALID_FROM" : "VALIDATION_MISSING_CONTENT",
@@ -257,7 +267,7 @@
     var body = { change_type: changeType, content: content };
     if (changeType === "evolve") {
       if (!form.valid_from.value.trim()) {
-        showError(form, { code: "VALIDATION_MISSING_VALID_FROM", message: "演进必须填写新的生效时间（YYYY-MM）", details: { field: "valid_from" } });
+        showError(form, { code: "VALIDATION_MISSING_VALID_FROM", message: "演进必须填写新的生效时间（YYYY-MM / YYYY-MM-DD / YYYY-MM-DDTHH:MM[:SS]）", details: { field: "valid_from" } });
         return;
       }
       body.valid_from = form.valid_from.value;
@@ -266,6 +276,10 @@
     call("/api/facts/" + encodeURIComponent(factId) + "/change", { method: "POST", body: body }).then(function (data) {
       form.reset();
       var action = data.change_type === "evolve" ? "已演进为新的生效段" : "已纠正（内容修订，区间不变）";
+      if (data.auto_bumped) {
+        action += "；已在同月/同日之后，按当前时刻 " + displayTime(data.fact.valid_from) + " 记录";
+      }
+      if (data.warnings && data.warnings.length) { showOk(msg, action + "（" + data.warnings.join("；") + "）"); } else { showOk(msg, action); }
       showOk(msg, action + "：画像已变更，记得点击「渲染宿主产物」");
       refreshAll();
     }).catch(function (err) { showError(form, err); });

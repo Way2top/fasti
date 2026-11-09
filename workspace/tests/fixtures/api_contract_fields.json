@@ -21,6 +21,7 @@
       "content",
       "valid_from",
       "valid_to",
+      "duplicate_confirmation",
       "change_type",
       "previous_fact_id",
       "source",

@@ -8,6 +8,8 @@
   修订无独立 ID，以 `(fact_id, seq)` 复合定位。
 """
 
+from . import clock
+
 
 class ReadModel(object):
     """事件 → 当前状态。字段名与 api-spec domain_model（v2）一致。"""
@@ -66,16 +68,17 @@ class ReadModel(object):
         return sorted(lines, key=lambda line: line["line_id"])
 
     def line_facts(self, line_id):
-        """同一 line 的事实段，按 (valid_from, fact_id) 升序。"""
+        """同一 line 的事实段，按 (生效瞬间, fact_id) 升序（C-07：按瞬间比较）。"""
         facts = [self.facts[fact_id] for fact_id in self.fact_order
                  if self.facts[fact_id]["line_id"] == line_id]
-        return sorted(facts, key=lambda fact: (fact["valid_from"], fact["fact_id"]))
+        return sorted(facts, key=lambda fact: (clock.instant(fact["valid_from"]),
+                                               fact["fact_id"]))
 
     def alive_line_facts(self, line_id):
         return [fact for fact in self.line_facts(line_id) if fact["deleted_at"] is None]
 
     def head_fact(self, line_id):
-        """当前 head = 未删除段中 valid_from 最大者（与系统时钟无关；同值取较大 fact_id）。"""
+        """当前 head = 未删除段中生效瞬间最大者（与系统时钟无关；同瞬间取较大 fact_id）。"""
         alive = self.alive_line_facts(line_id)
         return alive[-1] if alive else None
 

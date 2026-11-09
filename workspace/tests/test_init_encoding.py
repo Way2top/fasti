@@ -1,4 +1,4 @@
-"""US-1/US-10：初始化、事件日志规范化字节与 v2 格式（UUIDv7）。"""
+"""US-1/US-10：初始化、事件日志规范化字节与 v3 格式（UUIDv7 + 秒级生效时间）。"""
 
 import json
 import os
@@ -22,7 +22,7 @@ class TestInitAndEncoding(BaseStoreTest):
         self.assertTrue(all(category["deleted_at"] is None for category in categories))
         self.assertTrue(all("category_id" not in category for category in categories))
 
-    def test_events_are_canonical_jsonl_v2(self):
+    def test_events_are_canonical_jsonl_v3(self):
         api.add_fact(self.data_dir, "tech", "主力语言：C++", "2026-11")
         path = os.path.join(self.data_dir, "events.jsonl")
         with open(path, "rb") as handle:
@@ -38,8 +38,12 @@ class TestInitAndEncoding(BaseStoreTest):
             self.assertEqual(line, canonical)
         first = json.loads(lines[0])
         self.assertEqual(first["type"], "store_initialized")
-        self.assertEqual(first["data"]["format_version"], 2)
-        self.assertEqual(constants.FORMAT_VERSION, 2)
+        self.assertEqual(first["data"]["format_version"], 3)
+        self.assertEqual(constants.FORMAT_VERSION, 3)
+        fact_event = json.loads(lines[-1])
+        self.assertEqual(fact_event["type"], "fact_created")
+        self.assertEqual(fact_event["data"]["valid_from"],
+                         "2026-11-01T00:00:00+08:00")   # 三档输入：YYYY-MM → 月起点 + 本机偏移
         category_event = json.loads(lines[1])
         self.assertEqual(category_event["type"], "category_added")
         self.assertEqual(category_event["data"]["category_key"], "basics")

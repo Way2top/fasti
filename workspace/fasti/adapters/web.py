@@ -275,6 +275,7 @@ class FastiRequestHandler(BaseHTTPRequestHandler):
                                         message="缺少生效时间：请提供「从何时起为真」")
             result = api.add_fact(data_dir, category, content, valid_from)
             self._ok({"fact": result["fact"], "line": result["line"],
+                      "auto_bumped": bool(result.get("auto_bumped")),
                       "warnings": result.get("warnings", [])})
             return
         if len(parts) == 4 and parts[1] == "facts" and parts[3] == "change":
@@ -286,6 +287,7 @@ class FastiRequestHandler(BaseHTTPRequestHandler):
                                      body.get("valid_from"), body.get("note"))
             self._ok({"change_type": result["change_type"], "fact": result["fact"],
                       "revision": result["revision"],
+                      "auto_bumped": bool(result.get("auto_bumped")),
                       "warnings": result.get("warnings", [])})
             return
         if len(parts) == 4 and parts[1] == "facts" and parts[3] == "delete":
@@ -377,7 +379,7 @@ def _query_one(query, key):
 FIELD_LABELS = {
     "category": "类别",
     "content": "内容",
-    "valid_from": "从何时起为真（YYYY-MM）",
+    "valid_from": "从何时起为真（YYYY-MM / YYYY-MM-DD / YYYY-MM-DDTHH:MM[:SS]）",
     "change_type": "变更类型（演进 / 纠正）",
     "note": "备注",
     "enabled": "启用状态",
@@ -385,7 +387,7 @@ FIELD_LABELS = {
     "migrate_to": "迁移目标类别",
     "name": "类别名称",
     "key": "类别 key",
-    "at": "查询时点（YYYY-MM）",
+    "at": "查询时点（YYYY-MM / YYYY-MM-DD / YYYY-MM-DDTHH:MM[:SS]）",
 }
 
 

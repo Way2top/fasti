@@ -1,4 +1,4 @@
-"""C0s 事实应用服务（v2）：add / change / delete / list / show。
+"""C0s 事实应用服务（v3）：add / change / delete / list / show。
 
 引用解析：`fact_id` / `line_id` 接受完整 UUIDv7 或唯一短前缀（ADR-023）；
 输入来源只追加事件，不改历史。
@@ -32,7 +32,8 @@ def add_fact(data_dir, category, content, valid_from):
                 details={"category_key": category_obj["key"], "field": "category"},
             )
         content = validate.require_content(content)
-        month = validate.require_month(valid_from)
+        now = clock.now_local()
+        normalized = validate.require_valid_from(valid_from, now)
         line_id = ids.new_uuid7()
         fact_id = ids.new_uuid7()
         at = clock.now_recorded_at()
@@ -41,7 +42,7 @@ def add_fact(data_dir, category, content, valid_from):
             "line_id": line_id,
             "category_key": category_obj["key"],
             "content": content,
-            "valid_from": month,
+            "valid_from": normalized["value"],
             "source": "user_entry",
             "recorded_at": at,
         }, at)
@@ -51,6 +52,7 @@ def add_fact(data_dir, category, content, valid_from):
     return {
         "fact": new_model.fact(fact_id),
         "line": new_model.lines[line_id],
+        "auto_bumped": False,
         "warnings": [WARN_RENDER],
         "_extra": {"category_display_name": category_obj["display_name"]},
     }
@@ -99,6 +101,7 @@ def change_fact(data_dir, fact_id, change_type, content, valid_from=None, note=N
                 "change_type": "correct",
                 "fact": new_model.fact(fact["fact_id"]),
                 "revision": revisions[-1],
+                "auto_bumped": False,
                 "warnings": warnings,
                 "_extra": {"revision_seq": revisions[-1]["seq"]},
             }
@@ -106,7 +109,6 @@ def change_fact(data_dir, fact_id, change_type, content, valid_from=None, note=N
         # evolve
         if valid_from is None:
             raise errors.make("VALIDATION_MISSING_VALID_FROM", details={"field": "valid_from"})
-        month = validate.require_month(valid_from)
         head = model.head_fact(fact["line_id"])
         if head is None or head["fact_id"] != fact["fact_id"]:
             raise errors.make(
@@ -116,13 +118,23 @@ def change_fact(data_dir, fact_id, change_type, content, valid_from=None, note=N
                 details={"fact_id": fact["fact_id"],
                          "head_fact_id": head["fact_id"] if head else None},
             )
-        if not (month > fact["valid_from"]):
+        now = clock.now_local()
+        resolved = clock.resolve_valid_from(valid_from, now,
+                                            head_value=fact["valid_from"])
+        if not resolved["auto_bumped"] \
+                and clock.compare(resolved["value"], fact["valid_from"]) <= 0:
             raise errors.make(
                 "VALIDATION_VALID_FROM_NOT_AFTER_PREVIOUS",
-                "新的生效时间必须晚于被演进段的生效时间（%s > %s）"
-                % (month, fact["valid_from"]),
-                details={"valid_from": month, "previous_valid_from": fact["valid_from"]},
+                "新的生效时间必须晚于被演进段的生效时间（%s > %s）：请改用更晚的显式时刻；"
+                "同月/同日的粗粒度输入可省略时分秒，由系统按当前时刻记录"
+                % (clock.display_time(resolved["value"]),
+                   clock.display_time(fact["valid_from"])),
+                details={"valid_from": resolved["value"],
+                         "previous_valid_from": fact["valid_from"]},
             )
+        if resolved["auto_bumped"]:
+            warnings.append("已在同月/同日之后，按当前时刻 %s 记录"
+                            % clock.display_time(resolved["value"]))
         if note is not None:
             validate.require_note(note)
             warnings.append("演进不保存备注（仅纠正支持备注）：已忽略 --note")
@@ -132,7 +144,7 @@ def change_fact(data_dir, fact_id, change_type, content, valid_from=None, note=N
             "line_id": fact["line_id"],
             "previous_fact_id": fact["fact_id"],
             "content": content,
-            "valid_from": month,
+            "valid_from": resolved["value"],
             "source": "user_entry",
             "recorded_at": at,
         }, at)
@@ -144,6 +156,7 @@ def change_fact(data_dir, fact_id, change_type, content, valid_from=None, note=N
             "change_type": "evolve",
             "fact": new_model.fact(new_fact_id),
             "revision": new_model.revisions_of(new_fact_id)[0],
+            "auto_bumped": resolved["auto_bumped"],
             "warnings": warnings,
             "_extra": {"category_display_name":
                        new_model.category(line["category_key"])["display_name"]},

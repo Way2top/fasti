@@ -9,12 +9,14 @@ import shutil
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from fasti.core import api  # noqa: E402
+from fasti.core import clock  # noqa: E402
 from fasti.core import ids  # noqa: E402
 
 CORE_DIR = os.path.join(ROOT, "fasti", "core")
@@ -90,11 +92,49 @@ def reset_ids():
     ids.reset_generator()
 
 
+# 固定本机时刻（+08:00）：C-07 的「写入时本机偏移」与 auto-bump 依赖注入时钟
+FIXED_NOW = datetime(2026, 11, 10, 0, 5, 0,
+                     tzinfo=timezone(timedelta(hours=8)))
+
+
+class _SequenceNow(object):
+    """按顺序返回预设时刻（用完重复最后一个），用于 auto-bump/时钟推进用例。"""
+
+    def __init__(self, moments):
+        self.moments = list(moments)
+        self.index = 0
+
+    def __call__(self):
+        moment = self.moments[min(self.index, len(self.moments) - 1)]
+        self.index += 1
+        return moment
+
+
+def fixed_moment(month_offset=0):
+    """FIXED_NOW 的相对时刻（便于构造跨月/跨日场景）。"""
+    return FIXED_NOW
+
+
+def inject_now(moments=None):
+    """测试接缝：注入本机时钟；默认固定 FIXED_NOW（+08:00）。"""
+    if moments is None:
+        clock.set_now_provider(lambda: FIXED_NOW)
+    elif isinstance(moments, (list, tuple)):
+        clock.set_now_provider(_SequenceNow(moments))
+    else:
+        clock.set_now_provider(moments)
+
+
+def reset_now():
+    clock.reset_now_provider()
+
+
 class BaseStoreTest(unittest.TestCase):
     def setUp(self):
         # 注入稀疏时钟：每个 UUID 间隔 70s（不同毫秒），使 12 位短 ID（= 完整时间戳）
         # 唯一；需要构造同毫秒歧义的用例自行 inject_ids(step_ms=0)
         inject_ids(step_ms=70_000)
+        inject_now()
         self.tmp = tempfile.mkdtemp(prefix="fasti-test-")
         self.data_dir = os.path.join(self.tmp, "store")
         api.init_store(self.data_dir)
@@ -102,3 +142,4 @@ class BaseStoreTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
         reset_ids()
+        reset_now()

@@ -1,7 +1,17 @@
 -- =============================================================================
--- fasti · 数据模型 DDL（SQLite 3 · schema_version 2）
--- 对应 product-spec v3 + brief C-06 / architecture.md v1.4（ADR-002 / ADR-003 /
--- ADR-009 / ADR-023 / ADR-024）/ api-spec.yaml v1.2
+-- fasti · 数据模型 DDL（SQLite 3 · schema_version 3）
+-- 对应 product-spec v3 + brief C-06/C-07 / architecture.md v1.6（ADR-002 / ADR-003 /
+-- ADR-009 / ADR-023 / ADR-024 / ADR-025 / ADR-026）/ api-spec.yaml v1.3
+-- -----------------------------------------------------------------------------
+-- 【v6 变更说明（2026-11-09，brief C-07：生效时间精度升级为秒级）】
+--   schema_version 2 → 3；事件格式 format_version 2 → 3。变更只涉及时间精度：
+--   1) fact.valid_from：YYYY-MM → 完整 RFC3339 时间戳（带本机偏移、秒精度）；
+--      输入仍支持三档（月/日/时刻），粗输入映射粒度起点（由应用层归一，DB 只存完整形式）；
+--   2) 派生列 valid_to_month → valid_to：完整 RFC3339（左闭右开终点，由同 line 下一段推出）；
+--   3) 区间仍左闭右开；写入校验保证同 line 按瞬间严格递增 ⇒ 不存在零长区间；
+--   4) 其它表/列/事件类型/导出结构不变（fact_revision / category / event 表无变化）。
+--   数据迁移：v2 数据目录/导出包不向后兼容读取（见文件末尾「迁移/回滚说明」与
+--   architecture.md §13.5）；用户现有 v2 数据用一次性事件改写器升级（月值补 -01T00:00:00+偏移）。
 -- -----------------------------------------------------------------------------
 -- 【v4 变更说明（2026-11-09，brief C-06：ID 方案改用 UUIDv7）】
 --   schema_version 1 → 2；事件格式 format_version 1 → 2。变更全部是标识方案：
@@ -39,7 +49,7 @@
 -- =============================================================================
 
 PRAGMA foreign_keys = ON;
-PRAGMA user_version = 2;     -- schema_version：结构变更时 +1（v2 = UUIDv7 标识方案）
+PRAGMA user_version = 3;     -- schema_version：结构变更时 +1（v3 = 秒级生效时间）
 
 -- =============================================================================
 -- A. 持久化表：event（对应 <data-dir>/events.jsonl，每行一个 JSON 对象）
@@ -153,12 +163,13 @@ CREATE TABLE IF NOT EXISTS fact_line (
 -- 删除 = 打墓碑 deleted_at（历史保留，AC-1-4）。
 CREATE TABLE IF NOT EXISTS fact (
   fact_id          TEXT PRIMARY KEY   -- 主键：UUIDv7 规范形式（同 fact_line.line_id 的格式与含义）
-                                      -- 前端展示用短 ID（前 8 位十六进制），持久化/导出用完整形式
+                                      -- 前端展示用短 ID（前 12 位十六进制），持久化/导出用完整形式
   , line_id        TEXT NOT NULL      -- 所属命题线：外键 fact_line(line_id)，ON DELETE RESTRICT
-  , valid_from     TEXT NOT NULL      -- 生效时间（月精度 YYYY-MM）：从何时起为真（AC-1-2 必填项）
-                                      -- 区间语义：左闭右开 [valid_from, valid_to_month)（architecture.md ADR-006）
-  , valid_to_month TEXT               -- 段终（派生列，不独立写入！）：由同 line 中 valid_from 更大的
-                                      -- 最小「未删除段」推出；NULL=至今。显示时取其前一月（AC-3-1 的「至 2026-10」）。
+  , valid_from     TEXT NOT NULL      -- 生效时间（秒级完整时间戳，RFC3339 带本机偏移，如 2026-11-01T00:00:00+08:00）：
+                                      -- 从何时起为真（AC-1-2 必填项）。输入三档（月/日/时刻）由应用层归一（C-07 / ADR-025）
+                                      -- 区间语义：左闭右开 [valid_from, valid_to)（architecture.md §2.3）
+  , valid_to       TEXT               -- 段终（派生列，不独立写入！）：由同 line 中生效瞬间更大的
+                                      -- 最小「未删除段」推出；NULL=至今。人读显示用自适应自适应（月/日/秒）；
                                       -- 派生列不参与事件、不参与导出原始数据（导出快照里会带上便于核对）
   , change_type    TEXT NOT NULL      -- 该事实段的产生方式，枚举：create=首次录入 / evolve=由演进产生
                                       -- 注意：纠正不产生新事实段，纠正记录在 fact_revision.revision_type
@@ -184,16 +195,27 @@ CREATE TABLE IF NOT EXISTS fact (
         AND substr(previous_fact_id, 20, 1) IN ('8', '9', 'a', 'b')
         AND previous_fact_id NOT GLOB '*[^0-9a-f-]*'
         AND previous_fact_id NOT GLOB '*-*-*-*-*-*'))
-  , CHECK (valid_from GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]')
-  , CHECK (substr(valid_from, 6, 2) BETWEEN '01' AND '12')
-  , CHECK (valid_to_month IS NULL
-        OR (valid_to_month GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]'
-            AND valid_to_month > valid_from))       -- 段终严格晚于段首（字符串比较对 YYYY-MM 有效）
+  , CHECK (valid_from GLOB
+      '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9][+-][0-9][0-9]:[0-9][0-9]')
+  , CHECK (substr(valid_from, 6, 2) BETWEEN '01' AND '12'    -- 月份
+        AND substr(valid_from, 9, 2) BETWEEN '01' AND '31'   -- 日
+        AND substr(valid_from, 12, 2) BETWEEN '00' AND '23'  -- 时
+        AND substr(valid_from, 15, 2) BETWEEN '00' AND '59'  -- 分
+        AND substr(valid_from, 18, 2) BETWEEN '00' AND '59') -- 秒
+  , CHECK (valid_to IS NULL OR (valid_to GLOB
+      '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9][+-][0-9][0-9]:[0-9][0-9]'
+        AND substr(valid_to, 6, 2) BETWEEN '01' AND '12'
+        AND substr(valid_to, 9, 2) BETWEEN '01' AND '31'
+        AND substr(valid_to, 12, 2) BETWEEN '00' AND '23'
+        AND substr(valid_to, 15, 2) BETWEEN '00' AND '59'
+        AND substr(valid_to, 18, 2) BETWEEN '00' AND '59'))
+      -- 注意：valid_to > valid_from 只做格式/取值 CHECK；同一瞬间先后由应用层按偏移换算后校验
+      -- （SQLite 字符串比较在跨偏移时不可靠）。不存在零长区间由写入严格递增 + validate_invariants 保证。
   , CHECK ((change_type = 'create' AND previous_fact_id IS NULL)
         OR (change_type = 'evolve' AND previous_fact_id IS NOT NULL))
   , CHECK (recorded_at GLOB
       '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9][+-][0-9][0-9]:[0-9][0-9]')
-  , UNIQUE (line_id, valid_from)      -- 同一命题线同一生效月只允许一个事实段：区间不相交的结构性保证
+  , UNIQUE (line_id, valid_from)      -- 同一命题线同一生效瞬间只允许一个事实段：区间不相交的结构性保证
   , FOREIGN KEY (line_id) REFERENCES fact_line(line_id) ON DELETE RESTRICT
   , FOREIGN KEY (previous_fact_id) REFERENCES fact(fact_id) ON DELETE RESTRICT
 );
@@ -284,11 +306,12 @@ CREATE INDEX IF NOT EXISTS ix_event_occurred_at
 -- =============================================================================
 -- v_fact_current_content：每条事实段的当前内容（= 最大 seq 修订）
 -- 【v4】不再输出 revision_id（修订无独立 ID）；以 (fact_id, revision_seq) 定位。
+-- 【v6】valid_from / valid_to 为完整 RFC3339 时间戳（带偏移）；左闭右开区间。
 CREATE VIEW IF NOT EXISTS v_fact_current_content AS
 SELECT f.fact_id,
        f.line_id,
        f.valid_from,
-       f.valid_to_month,
+       f.valid_to,
        f.change_type,
        f.recorded_at,
        f.deleted_at,
@@ -301,7 +324,7 @@ JOIN fact_revision r ON r.fact_id = f.fact_id
 WHERE r.seq = (SELECT MAX(r2.seq) FROM fact_revision r2 WHERE r2.fact_id = f.fact_id);
 -- 意图：渲染当前画像/历史时，避免每个事实段重复写「取 max(seq)」子查询；也是 AC-2-2 溯源的取数入口
 
--- v_line_current_fact：每条命题线当前 head 事实段（未删除段中 valid_from 最大者）
+-- v_line_current_fact：每条命题线当前 head 事实段（未删除段中生效瞬间最大者）
 CREATE VIEW IF NOT EXISTS v_line_current_fact AS
 SELECT v.*
 FROM v_fact_current_content v
@@ -321,16 +344,17 @@ WHERE v.deleted_at IS NULL
 -- -----------------------------------------------------------------------------
 -- (1) 事件序号必须从 1 连续：
 --   SELECT MIN(event_seq), MAX(event_seq), COUNT(*) FROM event;   -- 期望 MIN=1 且 MAX=COUNT
--- (2) 首事件必须是 store_initialized 且只出现一次、format_version 必须为 2：
+-- (2) 首事件必须是 store_initialized 且只出现一次、format_version 必须为 3：
 --   SELECT event_seq, event_type FROM event WHERE event_seq = 1 AND event_type <> 'store_initialized';
 --   SELECT event_seq FROM event WHERE event_type = 'store_initialized' AND event_seq <> 1;
 --   SELECT event_seq FROM event WHERE event_type = 'store_initialized'
---     AND (json_extract(payload, '$.format_version') IS NOT 2);
--- (3) 同一命题线内未删除事实段不得重叠（相邻段 valid_from 必须严格递增，且 valid_to 一致）：
+--     AND (json_extract(payload, '$.format_version') IS NOT 3);
+-- (3) 同一命题线内未删除事实段不得重叠（按瞬间严格递增，且 valid_to = 下一段 valid_from）：
 --   SELECT a.fact_id, b.fact_id FROM fact a JOIN fact b
 --     ON a.line_id = b.line_id AND a.deleted_at IS NULL AND b.deleted_at IS NULL
---    AND a.valid_from < b.valid_from AND (a.valid_to_month IS NULL OR a.valid_to_month > b.valid_from);
---   -- 期望 0 行；同时 a.valid_to_month 必须等于 b.valid_from（派生一致性）
+--    AND a.valid_from < b.valid_from AND (a.valid_to IS NULL OR a.valid_to > b.valid_from);
+--   -- 期望 0 行；同时 a.valid_to 必须等于 b.valid_from（派生一致性；按偏移换算后的瞬间比较）
+--   -- 零长区间（valid_to <= valid_from）非法：由 UNIQUE(line_id, valid_from) + 严格递增保证
 -- (4) 删除类别的存量处置必须完成：不存在「类别已删除、但其 line 仍挂在它下面」的孤儿：
 --   SELECT l.line_id FROM fact_line l JOIN category c ON c.category_key = l.category_key
 --    WHERE c.deleted_at IS NOT NULL AND c.deleted_handling = 'migrate';
@@ -340,21 +364,45 @@ WHERE v.deleted_at IS NULL
 -- (6) 每个 fact 至少一条 revision 且第一条为 initial：
 --   SELECT f.fact_id FROM fact f LEFT JOIN fact_revision r ON r.fact_id = f.fact_id AND r.seq = 1
 --    WHERE r.fact_id IS NULL OR r.revision_type <> 'initial';
--- (7) 演进链必须同 line 且年月严格递增（previous_fact_id 指向同 line 的更早段）：
+-- (7) 演进链必须同 line 且按瞬间严格递增（previous_fact_id 指向同 line 的更早段）：
 --   SELECT f.fact_id FROM fact f JOIN fact p ON p.fact_id = f.previous_fact_id
 --    WHERE f.line_id <> p.line_id OR f.valid_from <= p.valid_from;
+--   注：SQL 文本比较仅在同偏移时等价；应用层会先按偏移换算再比较（validate_invariants）
 -- (8) 未删除类别中 display_name 唯一、模板顺序 1..7 唯一（由部分唯一索引保证）：
 --   -- 索引已强制；若建索引时数据非法会直接失败
 -- (9) UUIDv7 形态：fact_id / line_id / previous_fact_id 由 CHECK 强制（36 字符、版本位 7、变体位 10xx）
 --   -- 无需额外查询；若 CHECK 未启用（异常路径）可对照 api-spec conventions.ids.uuid7.canonical 正则
+-- (10) 时间形态：valid_from / valid_to 由 CHECK 强制 RFC3339（秒精度 + 显式偏移）；
+--   人读自适应显示不落库；`YYYY-MM` 粗粒度值**不得**出现在数据库中（迁移器负责补全）。
 -- =============================================================================
 
 -- =============================================================================
--- 迁移 / 回滚说明（文字版；schema_version 1 → 2）
+-- 迁移 / 回滚说明（文字版；当前 schema_version 3；历史：1 → 2 → 3）
 -- -----------------------------------------------------------------------------
--- 【版本标识】PRAGMA user_version = 2；事件日志另带 format_version（store_initialized 事件与
---   导出 manifest 中各有一次，当前值 = 2）。两者必须一致：user_version 描述「读取模型结构」，
+-- 【版本标识】PRAGMA user_version = 3；事件日志另带 format_version（store_initialized 事件与
+--   导出 manifest 中各有一次，当前值 = 3）。两者必须一致：user_version 描述「读取模型结构」，
 --   format_version 描述「事件/导出格式」。
+--
+-- 【v2 → v3 迁移（brief C-07：生效时间精度升级为秒级）】
+--   兼容性：**不向后兼容读取**。v3 代码遇到 v2 数据目录 ⇒ STORE_FORMAT_UNSUPPORTED（退出码 5，
+--   提示迁移）；遇到 v2 导出包 ⇒ IMPORT_UNSUPPORTED_FORMAT_VERSION（退出码 4，提示迁移）。
+--   步骤（脚本 `scripts/migrate_v2_to_v3.py`，一次性离线、stdlib；详见 architecture.md §13.5）：
+--   1) 迁移前：`fasti verify --deep` 预检；整目录备份 `~/.fasti.v2-backup-<ts>` + v2 `fasti export`；
+--      建议先复制备份到 /tmp 副本演练（dry-run → 实跑 → verify → 比对显示）。
+--   2) 停写（关闭 fasti web；单用户无常驻，天然满足）。
+--   3) 对每条 fact_created / fact_evolved 事件做：
+--        valid_from: "YYYY-MM" → "YYYY-MM-01T00:00:00<offset>"；
+--        offset 取**同一事件 recorded_at 的偏移**（用户数据为 +08:00）；
+--        store_initialized.format_version → 3；其它事件/字段/seq 原样。
+--      校验：同 line 按瞬间严格递增（v2 月唯一 ⇒ 升为月起点后必然递增，无零长区间）。
+--   4) 原子写回（tmp + fsync + rename）→ 删除 state/manifest.json →
+--      fasti verify（全 PASS）→ recompute → render。
+--   5) 成功判据：迁移 + 重算 + 渲染后，profile/*.md、dist/* 与迁移前 sha256 逐字节一致
+--      （显示自适应）；verify --deep 7/7；同月内演进手测通过。
+--   6) 回滚：恢复 v2 备份目录 + 切回旧代码 tag；极端情况用 v2 bundle（旧代码 import）恢复。
+--   注意：迁移器任何校验失败都**不触碰** events.jsonl；若目标已是 v3 则幂等 no-op。
+--   DDL 差异：v2 的 valid_to_month（YYYY-MM）→ v3 的 valid_to（完整 RFC3339）；
+--   valid_from 由月字符串升级为完整时间戳；其他表/索引/约束不变。
 --
 -- 【v1 → v2 迁移（brief C-06：ID 方案改用 UUIDv7）】
 --   兼容性：**不向后兼容读取**。v2 代码遇到 v1 数据目录 ⇒ STORE_FORMAT_UNSUPPORTED（退出码 5，
@@ -395,9 +443,9 @@ WHERE v.deleted_at IS NULL
 --   3) 删除 state/manifest.json（派生状态归零，避免「假装最新」）；
 --   4) 运行 verify（期望 sql.constraints 与 store.invariants 通过）→ recompute → render。
 --
--- 【回滚步骤（v2 → v1，含结构回滚）】
---   1) 恢复 v1 数据目录备份（~/.fasti.v1-backup）或 v1 export；
---   2) 切回 v1 代码（git tag）；
+-- 【回滚步骤（v3 → v2 / v1，含结构回滚）】
+--   1) 恢复对应版本的数据目录备份（~/.fasti.v2-backup-<ts> / ~/.fasti.v1-backup）或该版本 export；
+--   2) 切回对应版本代码（git tag）；
 --   3) 若需退回旧 schema：按依赖逆序删表/视图，再执行 v1 DDL 与 user_version；
 --      顺序：DROP VIEW v_line_current_fact; DROP VIEW v_fact_current_content;
 --            DROP TABLE fact_revision; DROP TABLE fact; DROP TABLE fact_line;

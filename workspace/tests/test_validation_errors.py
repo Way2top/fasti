@@ -1,4 +1,4 @@
-"""错误码与退出码映射（v2：UUIDv7 引用解析 + VALIDATION_INVALID_ID）。"""
+"""错误码与退出码映射（v3：UUIDv7 引用解析 + 三档时间输入）。"""
 
 import unittest
 
@@ -25,9 +25,18 @@ class TestValidationErrors(BaseStoreTest):
         self.assert_error("VALIDATION_CONTENT_MULTILINE", api.add_fact,
                           self.data_dir, "tech", "a\nb", "2026-11")
 
-    def test_invalid_month(self):
-        self.assert_error("VALIDATION_INVALID_MONTH", api.add_fact,
-                          self.data_dir, "tech", "x", "2026-13")
+    def test_invalid_valid_from(self):
+        exc = self.assert_error("VALIDATION_INVALID_VALID_FROM", api.add_fact,
+                                self.data_dir, "tech", "x", "2026-13")
+        self.assertIn("YYYY-MM", exc.message)
+        self.assert_error("VALIDATION_INVALID_VALID_FROM", api.add_fact,
+                          self.data_dir, "tech", "x", "2026-11-31")
+        self.assert_error("VALIDATION_INVALID_VALID_FROM", api.add_fact,
+                          self.data_dir, "tech", "x", "2026-11-09T00:00:00+08:00")
+
+    def test_invalid_at(self):
+        self.assert_error("VALIDATION_INVALID_AT", api.get_profile_at,
+                          self.data_dir, "2026-99")
 
     def test_change_type_required(self):
         fact_id = api.add_fact(self.data_dir, "tech", "x", "2026-11")["fact"]["fact_id"]
@@ -48,11 +57,15 @@ class TestValidationErrors(BaseStoreTest):
         self.assert_error("VALIDATION_EVOLVE_TARGET_NOT_HEAD", api.change_fact,
                           self.data_dir, first, "evolve", "z", "2027-01")
 
-    def test_evolve_month_must_advance(self):
+    def test_evolve_explicit_time_must_advance(self):
         first = api.add_fact(self.data_dir, "tech", "x", "2026-11")["fact"]["fact_id"]
         exc = self.assert_error("VALIDATION_VALID_FROM_NOT_AFTER_PREVIOUS", api.change_fact,
-                                self.data_dir, first, "evolve", "y", "2026-11")
+                                self.data_dir, first, "evolve", "y",
+                                "2026-11-01T00:00:00")
         self.assertIn("必须晚于", exc.message)
+        # 粗输入回溯到更早桶：同样拒绝（不静默改写明确意图）
+        self.assert_error("VALIDATION_VALID_FROM_NOT_AFTER_PREVIOUS", api.change_fact,
+                          self.data_dir, first, "evolve", "y", "2025-06")
 
     def test_category_state_checks(self):
         api.set_category_enabled(self.data_dir, "tech", False)

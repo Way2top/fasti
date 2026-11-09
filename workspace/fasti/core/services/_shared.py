@@ -7,6 +7,7 @@
 import os
 
 from .. import constants
+from .. import clock
 from .. import errors
 from .. import fold
 from .. import ids
@@ -66,8 +67,8 @@ def history_text(view):
 def _require_format_version(events):
     """格式门（api-spec conventions.format_versioning.load_gate）。
 
-    首事件必须是 store_initialized 且 format_version == 2，否则 STORE_FORMAT_UNSUPPORTED
-    （退出码 5，消息含「迁移」与迁移指引）。v1 数据**不向后兼容**（ADR-024）。
+    首事件必须是 store_initialized 且 format_version == 3，否则 STORE_FORMAT_UNSUPPORTED
+    （退出码 5，消息含「迁移」与迁移指引）。v1/v2 数据**不向后兼容**（ADR-024/026）。
     """
     if not events:
         return  # 交给 fold 报 CORRUPT_EVENT_SEQUENCE
@@ -80,11 +81,11 @@ def _require_format_version(events):
         raise errors.make(
             "STORE_FORMAT_UNSUPPORTED",
             "数据目录是旧格式（format_version=%r，当前支持 %d）：不支持向后兼容读取；"
-            "请先备份数据目录，再按迁移指引迁移到 v2（architecture.md §12.5："
-            "清空重建，或使用一次性事件改写器）后重试"
+            "请先备份数据目录，再按迁移指引迁移到 v3（architecture.md §13.5："
+            "运行 scripts/migrate_v2_to_v3.py 一次性迁移）后重试"
             % (version, constants.FORMAT_VERSION),
             details={"format_version": version, "supported": constants.FORMAT_VERSION,
-                     "migration": "architecture.md §12.5"},
+                     "migration": "architecture.md §13.5"},
             location="event seq=1",
         )
 
@@ -192,6 +193,6 @@ def _sort_facts(model, facts):
     return sorted(facts, key=lambda fact: (
         category_rank.get(fact["category_key"], 10 ** 6),
         line_rank.get(fact["line_id"], 10 ** 6),
-        fact["valid_from"],
+        clock.instant(fact["valid_from"]),
         fact["fact_id"],
     ))

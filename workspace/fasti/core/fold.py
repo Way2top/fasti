@@ -50,9 +50,19 @@ def _check_sequence(events):
                           "store_initialized 必须恰好出现一次，实际 %d 次" % len(initialized))
 
 
-def _require_month(event, value, field):
-    if not clock.is_month(value):
-        _fail(event, "%s 不是合法的 YYYY-MM：%r" % (field, value))
+def _require_valid_time(event, value, field):
+    if not clock.is_valid_time(value):
+        _fail(event, "%s 不是合法的 RFC3339 秒级时间戳：%r" % (field, value))
+
+
+def _require_after_previous(event, line_id, rm, value):
+    """同一 line 生效瞬间必须严格递增（C-07：无零长区间）。"""
+    for existing in rm.line_facts(line_id):
+        relation = clock.compare(existing["valid_from"], value)
+        if relation == 0:
+            _fail(event, "同一命题线的生效瞬间重复（%s）：不得出现零长区间" % value)
+        if relation > 0:
+            _fail(event, "新事实段的生效瞬间早于同线后续段：%s" % value)
 
 
 def _require_uuid7(event, value, field):
@@ -239,7 +249,7 @@ def _apply_fact_created(rm, event, index):
         _fail(event, "类别已删除：%s" % category_key)
     if not category["enabled"]:
         _fail(event, "类别未启用：%s" % category_key)
-    _require_month(event, data["valid_from"], "valid_from")
+    _require_valid_time(event, data["valid_from"], "valid_from")
     if data["source"] != "user_entry":
         _fail(event, "source 取值不合法：%r" % data["source"])
     content = _content(event, data["content"])
@@ -265,10 +275,11 @@ def _apply_fact_evolved(rm, event, index):
     if head is None or head["fact_id"] != previous["fact_id"]:
         _fail(event, "被演进的事实不是该命题线当前 head（head=%s）"
               % (head["fact_id"] if head else None))
-    _require_month(event, data["valid_from"], "valid_from")
-    if not (data["valid_from"] > previous["valid_from"]):
-        _fail(event, "演进的新生效月必须晚于被演进段（%s <= %s）"
+    _require_valid_time(event, data["valid_from"], "valid_from")
+    if clock.compare(data["valid_from"], previous["valid_from"]) <= 0:
+        _fail(event, "演进的新生效瞬间必须严格晚于被演进段（%s <= %s）"
               % (data["valid_from"], previous["valid_from"]))
+    _require_after_previous(event, data["line_id"], rm, data["valid_from"])
     if data["source"] != "user_entry":
         _fail(event, "source 取值不合法：%r" % data["source"])
     content = _content(event, data["content"])
@@ -327,10 +338,11 @@ def _finalize(rm):
         line = rm.lines[line_id]
         segments = rm.line_facts(line_id)
         alive = [fact for fact in segments if fact["deleted_at"] is None]
-        alive_months = sorted(fact["valid_from"] for fact in alive)
         for fact in segments:
-            later = [month for month in alive_months if month > fact["valid_from"]]
-            fact["valid_to"] = min(later) if later else None
+            later = [item for item in alive
+                     if clock.compare(item["valid_from"], fact["valid_from"]) > 0]
+            fact["valid_to"] = (min(later, key=lambda item: clock.instant(item["valid_from"]))
+                                ["valid_from"] if later else None)
             fact["category_key"] = line["category_key"]
             revisions = rm.revisions_of(fact["fact_id"])
             latest = revisions[-1]

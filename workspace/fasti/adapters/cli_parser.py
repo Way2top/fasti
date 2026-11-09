@@ -49,25 +49,29 @@ def build_parser():
     add = fact_sub.add_parser("add", parents=[g], help="录入一条事实")
     add.add_argument("--category")
     add.add_argument("--content")
-    add.add_argument("--valid-from", dest="valid_from")
+    add.add_argument("--valid-from", dest="valid_from",
+                 help="生效时间三档：YYYY-MM / YYYY-MM-DD / YYYY-MM-DDTHH:MM[:SS]")
 
     change = fact_sub.add_parser("change", parents=[g], help="变更事实（演进/纠正）")
     change.add_argument("fact_id", nargs="?")
     change.add_argument("--type", dest="change_type")
     change.add_argument("--content")
-    change.add_argument("--valid-from", dest="valid_from")
+    change.add_argument("--valid-from", dest="valid_from",
+                    help="新生效时间三档；同月/同日粗输入冲突时按当前时刻自动提升")
     change.add_argument("--note")
 
     evolve = fact_sub.add_parser("evolve", parents=[g], help="等价于 --type evolve")
     evolve.add_argument("fact_id", nargs="?")
     evolve.add_argument("--content")
-    evolve.add_argument("--valid-from", dest="valid_from")
+    evolve.add_argument("--valid-from", dest="valid_from",
+                    help="新生效时间三档；同月/同日粗输入冲突时按当前时刻自动提升")
     evolve.add_argument("--note")
 
     correct = fact_sub.add_parser("correct", parents=[g], help="等价于 --type correct")
     correct.add_argument("fact_id", nargs="?")
     correct.add_argument("--content")
-    correct.add_argument("--valid-from", dest="valid_from")
+    correct.add_argument("--valid-from", dest="valid_from",
+                     help="纠正不得改变生效时间（应省略）")
     correct.add_argument("--note")
 
     delete_fact = fact_sub.add_parser("delete", parents=[g], help="删除事实段（墓碑）")
