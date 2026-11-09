@@ -1,0 +1,85 @@
+{
+  "_comment": "前端 JS 字段契约快照（tests/test_web_contract.py 使用）。随仓库提交，保证无 artifacts/ 时守卫仍执行；artifacts/api-spec.yaml 存在时测试会做交叉校验，fixture 漂移即 fail。",
+  "contract_version": "1.2.1",
+  "source": "artifacts/api-spec.yaml（domain_model.$defs / conventions.error_envelope / core_api.output_json）",
+  "objects": {
+    "Category": [
+      "key",
+      "display_name",
+      "origin",
+      "template_order",
+      "enabled",
+      "created_at",
+      "deleted_at",
+      "deleted_handling",
+      "migrate_to_category_key"
+    ],
+    "Fact": [
+      "fact_id",
+      "line_id",
+      "category_key",
+      "content",
+      "valid_from",
+      "valid_to",
+      "change_type",
+      "previous_fact_id",
+      "source",
+      "recorded_at",
+      "latest_change",
+      "revision_count",
+      "deleted_at"
+    ],
+    "StatusReport": [
+      "counts",
+      "freshness",
+      "host_access",
+      "warnings"
+    ],
+    "StatusReportCounts": [
+      "events",
+      "categories_total",
+      "categories_enabled",
+      "lines",
+      "facts",
+      "revisions",
+      "deleted_facts"
+    ],
+    "StatusReportFreshness": [
+      "profile",
+      "host_artifacts"
+    ],
+    "StatusReportHostAccessItem": [
+      "host",
+      "scope",
+      "target",
+      "current",
+      "note"
+    ],
+    "RenderResult": [
+      "artifacts",
+      "host_body_bytes",
+      "warnings"
+    ],
+    "RenderArtifactItem": [
+      "path",
+      "bytes",
+      "sha256"
+    ],
+    "RecomputeResult": [
+      "artifacts",
+      "host_pending"
+    ],
+    "ResponseEnvelope": [
+      "ok",
+      "command",
+      "data",
+      "error"
+    ],
+    "Error": [
+      "code",
+      "message",
+      "details",
+      "location"
+    ]
+  }
+}
