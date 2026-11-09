@@ -96,7 +96,7 @@
     return call("/api/categories").then(function (data) {
       var alive = data.items.filter(function (item) { return !item.deleted_at; });
       categoryNames = {};
-      alive.forEach(function (item) { categoryNames[item.category_key] = item.display_name; });
+      alive.forEach(function (item) { categoryNames[item.key] = item.display_name; });
       var select = document.getElementById("add-category");
       select.innerHTML = "";
       var placeholder = document.createElement("option");
@@ -105,7 +105,7 @@
       select.appendChild(placeholder);
       alive.forEach(function (item) {
         var option = document.createElement("option");
-        option.value = item.category_key;
+        option.value = item.key;
         option.textContent = item.display_name + (item.enabled ? "" : "（已关闭）");
         option.disabled = !item.enabled;
         select.appendChild(option);
@@ -153,7 +153,7 @@
   }
 
   function toggleCategory(item, enabled) {
-    call("/api/categories/" + encodeURIComponent(item.category_key) + "/enabled", {
+    call("/api/categories/" + encodeURIComponent(item.key) + "/enabled", {
       method: "POST",
       body: { enabled: enabled }
     }).then(refreshAll).catch(function (err) { alert((err.code || "") + " " + (err.message || "")); });
@@ -165,12 +165,12 @@
     if (handling !== "migrate" && handling !== "delete") { alert("处置方式只能是 migrate 或 delete"); return; }
     var payload = { handling: handling };
     if (handling === "migrate") {
-      var candidates = Object.keys(categoryNames).filter(function (key) { return key !== item.category_key; });
+      var candidates = Object.keys(categoryNames).filter(function (key) { return key !== item.key; });
       var target = window.prompt("迁移目标类别（输入 category_key，可选：" + candidates.join(" / ") + "）", candidates[0] || "");
       if (!target) { return; }
       payload.migrate_to = target;
     }
-    call("/api/categories/" + encodeURIComponent(item.category_key) + "/delete", {
+    call("/api/categories/" + encodeURIComponent(item.key) + "/delete", {
       method: "POST",
       body: payload
     }).then(refreshAll).catch(function (err) { alert((err.code || "") + " " + (err.message || "")); });
