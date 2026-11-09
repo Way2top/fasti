@@ -44,19 +44,30 @@
 
 ## 5. 当前进度
 
-| 阶段 | 状态 | 产出 |
+**阶段：P0 已完成，进入用户 20 天自用验证（2026-11-09 起）。**
+
+| 阶段 | 状态 | 关键事实 |
 |---|---|---|
-| 需求 | ✅ 已交付 v3 | `artifacts/product-spec.md`（13 用户故事 / 59 AC） |
-| 架构 | ✅ 已交付 v3 增量 | `architecture.md`（20 ADR）/ `api-spec.yaml`（20 核心函数 + 22 CLI + 16 web 端点）/ `database-schema.sql`（5 表，schema_version 1） |
-| 实现 | ✅ 已完成 | `workspace/`：50 个源文件 / 6400 行 / 零第三方依赖 / 40 测试全绿；文件规模治理完成（无 >500 行） |
-| 验收 | ⚠️ **fail（仅差真人验证）** | `artifacts/test-report.md`：59 AC = **52 pass / 0 fail / 7 untested**；重构回归通过（白名单外差异 0）；**5 条宿主会话类 AC 为唯一阻塞** |
+| 需求 | ✅ v3 | 13 用户故事 / 59 AC |
+| 架构 | ✅ v1.5 | 24 条 ADR；UUIDv7 标识；schema_version 2 / format_version 2 |
+| 实现 | ✅ | 55 源文件 / 约 7400 行 / 零第三方依赖 / **76 测试全绿** |
+| 验收 | ⚠️ 52 pass / 0 fail / 7 untested | 5 条宿主会话 AC 仅 DSH 实测通过；AC-9-3（4 周）/ AC-11-4（第三方阅读）待验 |
 
-**项目名已定：Fasti**（`fasti` / `~/.fasti` / Apache-2.0）。
-**版本控制**：已 `git init`，`.git` 所在目录即项目根（技能发现依赖它）。
+**仓库**：https://github.com/Way2top/fasti （公开，Apache-2.0）
+**用户本地**：`~/.fasti`（v2 数据，6 条真实事实）；`~/.dsh/AGENTS.md` 软链已生效
 
-**当前唯一阻塞**：5 条 AC（6-1/6-2/6-3/6-5/7-1）需在真实宿主开新会话验证——只有用户能做。
-已知集成缺口：用户 `~/.claude/CLAUDE.md` 已存在真实内容，`install-host` 会 `blocked` 不覆盖（正确行为），需手工 `@import` 或合并。
-**P0 交付形态**：核心层 + 本机网页表单（主）+ CLI（次）；接入走用户级全局位置（`~/.dsh/AGENTS.md`、`~/.claude/CLAUDE.md`）。
+### 已验证可用
+- 网页表单全部功能（新增/演进/纠正/删除/类别/查询/渲染）
+- Agent 读取：DSH 实测在会话启动读到画像 ✅
+- 数据完整性：`verify --deep` 7/7
+
+### 已知遗留（不阻塞自用）
+1. **无合并去重**：用户第一天就产生了近似重复的两条事实（P0 范围外，P1 需处理）
+2. **fixture 漂移风险**：公共 clone 无 `artifacts/` 时无法发现 spec 演进导致的契约快照过时（P1 建议脚本生成）
+3. Claude Code / Cursor 接入未验证（环境不具备）
+
+### 内部文档（不入公开仓库）
+`briefs/`、`artifacts/`、`docs/reference/`、`docs/价值基线.md` 均被 `.gitignore` 忽略，仅存本机。
 
 ## 6. 已锁定决策（不要重新讨论）
 
