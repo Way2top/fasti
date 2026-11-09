@@ -10,6 +10,7 @@ from .. import clock
 from .. import errors
 from .. import fold
 from .. import ids
+from .. import similarity
 from .. import store
 from .. import validate
 from ._shared import (WARN_RENDER, _load_model, _make_event, _require_alive_category,
@@ -19,7 +20,7 @@ from ._shared import (WARN_RENDER, _load_model, _make_event, _require_alive_cate
 __all__ = ["add_fact", "change_fact", "delete_fact", "list_facts", "show_fact"]
 
 
-def add_fact(data_dir, category, content, valid_from):
+def add_fact(data_dir, category, content, valid_from, confirm_token=None):
     data_dir = os.path.abspath(data_dir)
     with store.store_lock(data_dir):
         _, events, model = _load_model(data_dir)
@@ -34,10 +35,49 @@ def add_fact(data_dir, category, content, valid_from):
         content = validate.require_content(content)
         now = clock.now_local()
         normalized = validate.require_valid_from(valid_from, now)
+        # C-08 B（服务端拦截）：在 valid_from 归一之后、追加事件之前检测相似
+        hits = similarity.find_similar(model, category_obj["key"], content)
+        duplicate_confirmation = None
+        if confirm_token and not hits:
+            # AC-15-5：携带令牌但内容已改到无相似候选 ⇒ 令牌不可复用
+            expected_empty = similarity.confirm_token(
+                "fact.add", category_obj["key"], content, [])
+            if confirm_token != expected_empty:
+                raise errors.make(
+                    "VALIDATION_INVALID_CONFIRM_TOKEN",
+                    "确认令牌已失效（内容/类别/候选集已变化）：请重新确认后再提交",
+                    details={"field": "confirm_token"},
+                )
+        if hits:
+            candidate_ids = [hit["fact_id"] for hit in hits]
+            expected_token = similarity.confirm_token(
+                "fact.add", category_obj["key"], content, candidate_ids)
+            if not confirm_token:
+                raise errors.make(
+                    "CONFLICT_SIMILAR_FACT",
+                    "检测到相似记录（最高相似度 %.3f）：请确认是更新（改成演进/纠正）"
+                    "还是新增；确认新增请携带确认令牌重试"
+                    % hits[0]["similarity"],
+                    details={"field": "content", "candidates": hits,
+                             "confirm_token": expected_token},
+                )
+            if confirm_token != expected_token:
+                raise errors.make(
+                    "VALIDATION_INVALID_CONFIRM_TOKEN",
+                    "确认令牌已失效（内容/类别/候选集已变化）：请重新确认后再提交",
+                    details={"field": "confirm_token"},
+                )
+            duplicate_confirmation = {
+                "confirmed": True,
+                "candidates": candidate_ids,
+                "max_similarity": hits[0]["similarity"],
+                "token_sha256": similarity.token_sha256(
+                    "fact.add", category_obj["key"], content, candidate_ids),
+            }
         line_id = ids.new_uuid7()
         fact_id = ids.new_uuid7()
         at = clock.now_recorded_at()
-        event = _make_event(events, "fact_created", {
+        event_data = {
             "fact_id": fact_id,
             "line_id": line_id,
             "category_key": category_obj["key"],
@@ -45,7 +85,10 @@ def add_fact(data_dir, category, content, valid_from):
             "valid_from": normalized["value"],
             "source": "user_entry",
             "recorded_at": at,
-        }, at)
+        }
+        if duplicate_confirmation is not None:
+            event_data["duplicate_confirmation"] = duplicate_confirmation
+        event = _make_event(events, "fact_created", event_data, at)
         new_events = events + [event]
         new_model = fold_for_write(new_events)      # 先内存折叠校验
         store.write_events(data_dir, new_events)    # 通过后才落盘

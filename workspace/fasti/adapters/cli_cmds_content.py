@@ -10,7 +10,8 @@ from .cli_io import _emit, _select
 
 
 def _cmd_fact_add(args, data_dir):
-    result = api.add_fact(data_dir, args.category, args.content, args.valid_from)
+    result = api.add_fact(data_dir, args.category, args.content, args.valid_from,
+                          getattr(args, "confirm_duplicate", None))
     fact = result["fact"]
     line = result["line"]
     display = result["_extra"].get("category_display_name", line["category_key"])
@@ -100,6 +101,10 @@ def _cmd_fact_show(args, data_dir):
                           if fact["deleted_at"] else "未删除"),
         "修订：",
     ]
+    confirmation = fact.get("duplicate_confirmation")
+    if confirmation:
+        candidates = "、".join(api.short_id(item) for item in confirmation["candidates"])
+        lines.append("重复确认：与 %s 相似后新增" % candidates)
     for revision in result["revisions"]:
         note = ("（备注：%s）" % revision["note"]) if revision.get("note") else ""
         lines.append("- #%d %s %s %s%s" % (revision["seq"], revision["revision_type"],

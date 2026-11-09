@@ -51,6 +51,9 @@ def build_parser():
     add.add_argument("--content")
     add.add_argument("--valid-from", dest="valid_from",
                  help="生效时间三档：YYYY-MM / YYYY-MM-DD / YYYY-MM-DDTHH:MM[:SS]")
+    add.add_argument("--confirm-duplicate", dest="confirm_duplicate",
+                     help="C-08：确认「这确实是新增」（令牌来自 CONFLICT_SIMILAR_FACT 的 "
+                          "details.confirm_token；内容/类别/候选变化即失效）")
 
     change = fact_sub.add_parser("change", parents=[g], help="变更事实（演进/纠正）")
     change.add_argument("fact_id", nargs="?")

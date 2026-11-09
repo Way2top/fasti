@@ -44,6 +44,15 @@ def _emit_error(exc, command_id):
         sys.stdout.flush()
     else:
         sys.stderr.write("错误 %s：%s\n" % (exc.code, exc.message))
+        if exc.code == "CONFLICT_SIMILAR_FACT":
+            details = exc.details or {}
+            for candidate in details.get("candidates", []):
+                sys.stderr.write("  候选 fact %s（相似度 %.3f）：%s\n"
+                                 % (candidate.get("fact_id"), candidate.get("similarity", 0.0),
+                                    candidate.get("content")))
+            if details.get("confirm_token"):
+                sys.stderr.write("  确认新增请重试并追加：--confirm-duplicate %s\n"
+                                 % details["confirm_token"])
         sys.stderr.flush()
     return exc.exit_code
 

@@ -273,7 +273,8 @@ class FastiRequestHandler(BaseHTTPRequestHandler):
             content = _require_field(body, "content")
             valid_from = _require_field(body, "valid_from", code="VALIDATION_MISSING_VALID_FROM",
                                         message="缺少生效时间：请提供「从何时起为真」")
-            result = api.add_fact(data_dir, category, content, valid_from)
+            result = api.add_fact(data_dir, category, content, valid_from,
+                                  body.get("confirm_token"))
             self._ok({"fact": result["fact"], "line": result["line"],
                       "auto_bumped": bool(result.get("auto_bumped")),
                       "warnings": result.get("warnings", [])})

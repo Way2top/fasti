@@ -155,6 +155,7 @@ def _fact_history_entry(model, category, line, fact):
         "recorded_at": fact["recorded_at"],
         "revision_count": fact["revision_count"],
         "corrections": corrections,
+        "duplicate_confirmation": fact.get("duplicate_confirmation"),
         "deleted_at": fact["deleted_at"],
     }
 
@@ -282,6 +283,12 @@ def _history_entry_lines(entry):
                                      clock.display_time(entry["valid_from"]),
                                      entry["display_end"])]
     lines.append("  ↳ 变更：%s（%s）" % (entry["change_kind"], entry["recorded_at"]))
+    confirmation = entry.get("duplicate_confirmation")
+    if confirmation:
+        candidates = "、".join(ids.short_id(item)
+                               for item in confirmation["candidates"])
+        lines.append("  ↳ 重复确认：与 %s 相似（%s）后新增"
+                     % (candidates, confirmation["max_similarity"]))
     for correction in entry["corrections"]:
         lines.append("  ↳ 纠正（%s）：原内容「%s」"
                      % (correction["recorded_at"], correction["old_content"]))

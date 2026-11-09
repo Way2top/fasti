@@ -206,7 +206,7 @@ def _new_line(rm, event, line_id, category_key, created_at):
 
 
 def _new_fact(rm, event, fact_id, line_id, valid_from, content, change_type,
-              previous_fact_id, source, recorded_at):
+              previous_fact_id, source, recorded_at, duplicate_confirmation=None):
     _require_uuid7(event, fact_id, "fact_id")
     if fact_id in rm.facts:
         _fail(event, "事实 ID 重复：%s" % fact_id)
@@ -224,6 +224,7 @@ def _new_fact(rm, event, fact_id, line_id, valid_from, content, change_type,
         "latest_change": None,
         "revision_count": 1,
         "deleted_at": None,
+        "duplicate_confirmation": duplicate_confirmation,
     }
     rm.facts[fact_id] = fact
     rm.fact_order.append(fact_id)
@@ -236,6 +237,29 @@ def _new_fact(rm, event, fact_id, line_id, valid_from, content, change_type,
         "recorded_at": recorded_at,
     }]
     return fact
+
+
+def _require_duplicate_confirmation(event, value):
+    """C-08 可选审计字段：confirmed=true + 1..5 个候选 + sim 0..1 + 64 位哈希。"""
+    if not isinstance(value, dict):
+        _fail(event, "duplicate_confirmation 必须是对象")
+    if set(value) != {"confirmed", "candidates", "max_similarity", "token_sha256"}:
+        _fail(event, "duplicate_confirmation 字段集不合法")
+    if value.get("confirmed") is not True:
+        _fail(event, "duplicate_confirmation.confirmed 必须为 true")
+    candidates = value.get("candidates")
+    if not isinstance(candidates, list) or not 1 <= len(candidates) <= 5:
+        _fail(event, "duplicate_confirmation.candidates 必须为 1..5 个 fact_id")
+    for candidate in candidates:
+        _require_uuid7(event, candidate, "duplicate_confirmation.candidates[]")
+    similarity_value = value.get("max_similarity")
+    if isinstance(similarity_value, bool) or not isinstance(similarity_value, (int, float)) \
+            or not 0 <= similarity_value <= 1:
+        _fail(event, "duplicate_confirmation.max_similarity 必须在 0..1")
+    digest = value.get("token_sha256")
+    if not isinstance(digest, str) or len(digest) != 64 \
+            or any(char not in "0123456789abcdef" for char in digest):
+        _fail(event, "duplicate_confirmation.token_sha256 必须是 64 位小写十六进制")
 
 
 def _apply_fact_created(rm, event, index):
@@ -253,9 +277,15 @@ def _apply_fact_created(rm, event, index):
     if data["source"] != "user_entry":
         _fail(event, "source 取值不合法：%r" % data["source"])
     content = _content(event, data["content"])
+    confirmation = data.get("duplicate_confirmation")
+    if confirmation is not None:
+        _require_duplicate_confirmation(event, confirmation)
+        confirmation = dict(confirmation)
+        confirmation["candidates"] = list(confirmation["candidates"])
     _new_line(rm, event, data["line_id"], category_key, data["recorded_at"])
     _new_fact(rm, event, data["fact_id"], data["line_id"], data["valid_from"], content,
-              "create", None, data["source"], data["recorded_at"])
+              "create", None, data["source"], data["recorded_at"],
+              duplicate_confirmation=confirmation)
 
 
 def _apply_fact_evolved(rm, event, index):

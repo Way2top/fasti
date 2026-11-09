@@ -1,4 +1,4 @@
-"""事件记录结构校验（v2 / format_version 2）：UUIDv7 标识 + category_key。
+"""事件记录结构校验（v3 / format_version 3）：UUIDv7 + 秒级时间 + C-08 确认字段。
 
 供导入流水线第 2 步使用：结构不合法 ⇒ IMPORT_INVALID_RECORD（不在此抛错，返回问题列表）。
 字段契约见 api-spec file_formats.events_jsonl（v2）。
@@ -57,6 +57,7 @@ EVENT_DATA_SPECS = {
         "valid_from": _spec("ts"),
         "source": _spec("enum", values=["user_entry"]),
         "recorded_at": _spec("ts"),
+        "duplicate_confirmation": _spec("duplicate_confirmation", optional=True),
     },
     "fact_evolved": {
         "fact_id": _spec("uuid7"),
@@ -127,6 +128,35 @@ def _validate_value(spec, value, path, problems):
     elif kind == "category_key":
         if not isinstance(value, str) or not re.match(constants.CATEGORY_KEY_RE, value):
             problems.append({"field": path, "message": "应为合法类别 key（a-z0-9_-，1..32）"})
+    elif kind == "duplicate_confirmation":
+        _validate_duplicate_confirmation(value, path, problems)
+
+
+def _validate_duplicate_confirmation(value, path, problems):
+    if not isinstance(value, dict):
+        problems.append({"field": path, "message": "应为对象"})
+        return
+    expected = {"confirmed", "candidates", "max_similarity", "token_sha256"}
+    extra = sorted(set(value) - expected)
+    if extra:
+        problems.append({"field": path, "message": "不允许多余字段：%s" % (extra,)})
+    if value.get("confirmed") is not True:
+        problems.append({"field": path + ".confirmed", "message": "必须为 true"})
+    candidates = value.get("candidates")
+    if not isinstance(candidates, list) or not 1 <= len(candidates) <= 5:
+        problems.append({"field": path + ".candidates", "message": "应为 1..5 个候选 fact_id"})
+    else:
+        for index, candidate in enumerate(candidates):
+            if not ids.is_uuid7(candidate):
+                problems.append({"field": "%s.candidates[%d]" % (path, index),
+                                 "message": "应为 UUIDv7"})
+    similarity = value.get("max_similarity")
+    if isinstance(similarity, bool) or not isinstance(similarity, (int, float)) \
+            or not 0 <= similarity <= 1:
+        problems.append({"field": path + ".max_similarity", "message": "应为 0..1 数值"})
+    digest = value.get("token_sha256")
+    if not isinstance(digest, str) or not re.match(r"^[0-9a-f]{64}$", digest):
+        problems.append({"field": path + ".token_sha256", "message": "应为 64 位小写十六进制"})
 
 
 def validate_event_record(event):
@@ -159,7 +189,8 @@ def validate_event_record(event):
     for key, field_spec in spec.items():
         path = "data." + key
         if key not in data:
-            problems.append({"field": path, "message": "缺少必填字段"})
+            if not field_spec.get("optional"):
+                problems.append({"field": path, "message": "缺少必填字段"})
             continue
         _validate_value(field_spec, data[key], path, problems)
     # 跨字段规则

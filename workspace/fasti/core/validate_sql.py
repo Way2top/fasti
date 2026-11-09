@@ -6,6 +6,7 @@ artifacts/database-schema.sql 逐字节相同），用 PK/FK/UNIQUE/CHECK 做校
 """
 
 import os
+import json
 import sqlite3
 
 from . import errors
@@ -72,11 +73,14 @@ def check_sql_constraints(model):
             fact = model.facts[fact_id]
             conn.execute(
                 "INSERT INTO fact (fact_id, line_id, valid_from, valid_to, change_type,"
-                " previous_fact_id, source, recorded_at, deleted_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?)",
+                " previous_fact_id, source, recorded_at, deleted_at, duplicate_confirmation)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (fact["fact_id"], fact["line_id"], fact["valid_from"], fact["valid_to"],
                  fact["change_type"], fact["previous_fact_id"], fact["source"],
-                 fact["recorded_at"], fact["deleted_at"]),
+                 fact["recorded_at"], fact["deleted_at"],
+                 None if fact.get("duplicate_confirmation") is None else
+                 json.dumps(fact["duplicate_confirmation"], sort_keys=True,
+                            separators=(",", ":"), ensure_ascii=False)),
             )
         for fact_id in model.fact_order:
             for revision in model.revisions_of(fact_id):

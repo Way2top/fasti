@@ -10,6 +10,9 @@
 --   2) 派生列 valid_to_month → valid_to：完整 RFC3339（左闭右开终点，由同 line 下一段推出）；
 --   3) 区间仍左闭右开；写入校验保证同 line 按瞬间严格递增 ⇒ 不存在零长区间；
 --   4) 其它表/列/事件类型/导出结构不变（fact_revision / category / event 表无变化）。
+--   5) C-08（相似检测 + 显式确认）**合并进同一版本**：fact 表新增 nullable 列
+--      duplicate_confirmation（JSON：{confirmed, candidates, max_similarity, token_sha256}，无确认时 NULL）；
+--      事件 fact_created 的可选字段同名。format_version 仍为 3（C-07 + C-08 单次升级，不新增 4）。
 --   数据迁移：v2 数据目录/导出包不向后兼容读取（见文件末尾「迁移/回滚说明」与
 --   architecture.md §13.5）；用户现有 v2 数据用一次性事件改写器升级（月值补 -01T00:00:00+偏移）。
 -- -----------------------------------------------------------------------------
@@ -179,6 +182,9 @@ CREATE TABLE IF NOT EXISTS fact (
                                       -- 枚举：user_entry（本迭代）；未来扩展来源需 format_version 升级，不得静默新增
   , recorded_at    TEXT NOT NULL      -- 首次录入时间：纠正**不得改写**（AC-1-3「第一次录入时间不被改写」）
   , deleted_at     TEXT               -- 删除墓碑时间：NULL=未删除。删除后不参与当前画像/回溯，但历史可见（AC-1-4）
+  , duplicate_confirmation TEXT      -- C-08 确认痕迹（派生列；来自 fact_created.duplicate_confirmation 事件字段）：
+                                    -- canonical JSON {confirmed, candidates, max_similarity, token_sha256}；NULL=无确认痕迹。
+                                    -- 仅由事件折叠而来，不参与排序/画像/区间计算；用于历史与导出审计（AC-15-3/AC-15-5）。
   , CHECK (change_type IN ('create', 'evolve'))
   , CHECK (source IN ('user_entry'))
   , CHECK (length(fact_id) = 36
@@ -211,6 +217,7 @@ CREATE TABLE IF NOT EXISTS fact (
         AND substr(valid_to, 18, 2) BETWEEN '00' AND '59'))
       -- 注意：valid_to > valid_from 只做格式/取值 CHECK；同一瞬间先后由应用层按偏移换算后校验
       -- （SQLite 字符串比较在跨偏移时不可靠）。不存在零长区间由写入严格递增 + validate_invariants 保证。
+  , CHECK (duplicate_confirmation IS NULL OR json_valid(duplicate_confirmation))  -- C-08：非 NULL 时必须是合法 JSON
   , CHECK ((change_type = 'create' AND previous_fact_id IS NULL)
         OR (change_type = 'evolve' AND previous_fact_id IS NOT NULL))
   , CHECK (recorded_at GLOB
@@ -315,6 +322,7 @@ SELECT f.fact_id,
        f.change_type,
        f.recorded_at,
        f.deleted_at,
+       f.duplicate_confirmation,
        r.content,
        r.revision_type,
        r.recorded_at AS content_recorded_at,
@@ -374,6 +382,8 @@ WHERE v.deleted_at IS NULL
 --   -- 无需额外查询；若 CHECK 未启用（异常路径）可对照 api-spec conventions.ids.uuid7.canonical 正则
 -- (10) 时间形态：valid_from / valid_to 由 CHECK 强制 RFC3339（秒精度 + 显式偏移）；
 --   人读自适应显示不落库；`YYYY-MM` 粗粒度值**不得**出现在数据库中（迁移器负责补全）。
+-- (11) C-08 确认痕迹形态：duplicate_confirmation 为 NULL 或合法 JSON（CHECK 强制）；
+--   仅当 fact_created 事件带同名字段时非 NULL；不得手工写入；不参与任何排序/区间计算。
 -- =============================================================================
 
 -- =============================================================================
@@ -401,6 +411,8 @@ WHERE v.deleted_at IS NULL
 --      （显示自适应）；verify --deep 7/7；同月内演进手测通过。
 --   6) 回滚：恢复 v2 备份目录 + 切回旧代码 tag；极端情况用 v2 bundle（旧代码 import）恢复。
 --   注意：迁移器任何校验失败都**不触碰** events.jsonl；若目标已是 v3 则幂等 no-op。
+--   C-08 合并：v3 的 fact.duplicate_confirmation 为 nullable；v2 数据迁移后该列为 NULL（事件里无此字段），
+--   无需额外迁移步骤；format_version 仍为 3。
 --   DDL 差异：v2 的 valid_to_month（YYYY-MM）→ v3 的 valid_to（完整 RFC3339）；
 --   valid_from 由月字符串升级为完整时间戳；其他表/索引/约束不变。
 --

@@ -97,6 +97,28 @@ def check_invariants(model):
             elif clock.compare(fact["valid_to"], fact["valid_from"]) <= 0:
                 problems.append("事实 %s 的 valid_to 未晚于 valid_from（零长/负区间）"
                                 % fact["fact_id"])
+        confirmation = fact.get("duplicate_confirmation")
+        if confirmation is not None:
+            if not isinstance(confirmation, dict) \
+                    or set(confirmation) != {"confirmed", "candidates", "max_similarity",
+                                             "token_sha256"}:
+                problems.append("事实 %s 的 duplicate_confirmation 形态非法" % fact["fact_id"])
+            else:
+                candidates = confirmation["candidates"]
+                if confirmation["confirmed"] is not True \
+                        or not isinstance(candidates, list) or not 1 <= len(candidates) <= 5 \
+                        or not all(ids.is_uuid7(item) for item in candidates):
+                    problems.append("事实 %s 的 duplicate_confirmation.candidates 非法"
+                                    % fact["fact_id"])
+                if not isinstance(confirmation["max_similarity"], (int, float)) \
+                        or isinstance(confirmation["max_similarity"], bool) \
+                        or not 0 <= confirmation["max_similarity"] <= 1:
+                    problems.append("事实 %s 的 duplicate_confirmation.max_similarity 非法"
+                                    % fact["fact_id"])
+                digest = confirmation["token_sha256"]
+                if not isinstance(digest, str) or len(digest) != 64:
+                    problems.append("事实 %s 的 duplicate_confirmation.token_sha256 非法"
+                                    % fact["fact_id"])
         revisions = model.revisions_of(fact["fact_id"])
         if not revisions:
             problems.append("事实 %s 缺少修订" % fact["fact_id"])
