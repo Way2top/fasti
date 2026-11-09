@@ -87,8 +87,8 @@
 | ST-48 | AC-13-1~13-5（防呆） | `node --check fasti/adapters/web_static/app.js` + 断言 IIFE 首尾行 | 修复 R-F1 后 **exit 0**（修复前 `SyntaxError: Unexpected token '}'`，exit 1）；断言首行 `(function () {`、次行 `"use strict";`、倒数第二行 `})();` | ✅ |
 | ST-49 | 静态资源完整性（防呆） | 检查 `web_static/` 三文件存在/非空/单末尾 LF、`index.html` 仅同源引用、零外部 URL、与基线内联内容 sha256 一致 | 全部通过；`app.js` 内容 sha256 `0fb916a6…`、`style.css` 内容 sha256 `d6e0c406…` 与 `git show refactor-baseline:…/index.html` 的内联内容**逐字节相同** | ✅ |
 
-**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **76 条自动化用例**（C-06 v2：UUIDv7/短前缀/格式门/类别复活/持久化短 ID 守卫/写路径原子性/前端字段契约 fixture 等，见 §9）；无失败项。
-自动化测试：`Ran 76 tests … OK`（见 §4.1 与 §9）。
+**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **93 条自动化用例**（v3 时间语义/auto-bump/自适应显示/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约 fixture 等，见 §9/§10）；无失败项。
+自动化测试：`Ran 93 tests … OK`（见 §4.1 与 §10）。
 > 注：下表 ST-01~ST-47 中出现的 `fact-0001` / `line-0001` / `cat-0002` 为 **v1（序号方案）历史记录**；C-06 迁移后同一行为以 UUIDv7 + 短前缀复现，见 §9。
 
 ---
@@ -99,9 +99,9 @@
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests -v
-…（76 个用例，全 ok）
+…（93 个用例，全 ok）
 ----------------------------------------------------------------------
-Ran 76 tests in 1.522s
+Ran 93 tests in 1.009s
 
 OK
 ```
@@ -308,11 +308,11 @@ python3 -V                     # 期望 3.9+（实测 3.13.3）
 python3 -c "import sqlite3; print(sqlite3.sqlite_version)"   # 期望 >= 3.38（需 JSON1）
 ```
 
-### 4.1 一键自动化（覆盖 v2 标识/短前缀/格式门/类别复活/写路径原子性/前端字段契约/确定性/演进纠正/导入导出/CLI/网页/分层/静态资源，76 用例）
+### 4.1 一键自动化（覆盖 v3 时间语义/auto-bump/自适应显示/迁移强回归 + v2 标识/短前缀/格式门/类别复活/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，93 用例）
 
 ```bash
 python3 -m unittest discover -s tests -v
-# 期望最后三行：Ran 76 tests in … / OK
+# 期望最后三行：Ran 93 tests in … / OK
 ```
 
 ### 4.2 端到端手工场景（照抄命令，对比输出）
@@ -459,7 +459,7 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 
 - 全部实现位于 `workspace/`，入口 `python3 run.py …`（或安装后的 `fasti …`）。
 - 运行方式与命令速览见 [`README.md`](README.md)。
-- 自测统计：**自动化 76/76 通过（见 §9，含 QA 回归修复 4 条 + 前端字段契约 4 条；无 artifacts 环境同样 0 skip 全绿）；手工/端到端 49 条用例中 47 条完全通过、2 条「核心语义通过 + 真实环境待验」、0 失败**。
+- 自测统计：**自动化 93/93 通过（见 §10；无 artifacts 环境同样 0 skip 全绿）；手工/端到端 49 条用例中 47 条完全通过、2 条「核心语义通过 + 真实环境待验」、0 失败**。
 - **等待 QA 独立验证**：以上「完成」仅为开发侧自测结论，不代表项目验收通过；QA 应按 `artifacts/product-spec.md` 的 59 条 AC 独立复现并给出 `pass` / `fail` 判定。
 
 ---
@@ -667,10 +667,13 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 | 6 | `fa14fcf` | QA 回归修复：P0 写路径改为「先内存折叠校验、通过后才落盘」+ 自动类别 key 全量碰撞检查；P1 网页短 ID 去连字符；P2 错误码兜底文案用 FORMAT_VERSION；新增 `test_write_atomicity.py`（68 → 72） |
 | 7 | `17cb6da` | 用户实测阻断修复：网页类别对象字段 `item.category_key` → `item.key`（5 处）；新增 `test_web_contract.py`（前端字段契约，72 → 75） |
 | 8 | **`8da554c`** | **契约测试静默失效修复**：新增随仓库提交的 `tests/fixtures/api_contract_fields.json`；无 artifacts 时 0 skip；artifacts 存在时 fixture↔spec 交叉校验；覆盖扩展 StatusReport/Render/Recompute/错误封套（75 → 76） |
-| 9 | 本文件 commit | README / SELFTEST 同步（§9.10 fixture 方案、无 artifacts 实测、两次 red-check、fixture 漂移校验） |
+| 9 | `526975a` | README / SELFTEST 同步（§9.10 fixture 方案、无 artifacts 实测、两次 red-check、fixture 漂移校验） |
+| 10 | **`0108486`** | **C-07 v3 实现**：秒级生效时间（三档输入/auto-bump/自适应显示/瞬间比较/`--at` 桶起点）、format_version 3 / schema_version 3 / contract_version 1.3.0、格式门 v1/v2、CLI/网页/导出适配（76 → 88） |
+| 11 | **`537beb9`** | **v2→v3 迁移脚本**：`scripts/migrate_v2_to_v3.py`（dry-run/原子/幂等/严格递增校验）+ 强回归测试（88 → 93） |
+| 12 | 本文件 commit | README / SELFTEST 同步（§10 C-07 证据：三档输入/auto-bump/自适应显示/迁移 dry-run/强回归） |
 | 8 | 本文件 commit | README / SELFTEST 同步（§9.9 前端字段契约修复证据；用例 75） |
 
-### 9.3 自动化测试（76 用例，全绿）
+### 9.3 自动化测试（76 用例时点记录；C-07 后为 93 用例，见 §10）
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests
@@ -1013,3 +1016,159 @@ FAILED (failures=3)
 | 行数 | 无文件 >500；`test_web_contract.py` 291 行、fixture 85 行 |
 | 用户数据 | 全程 `--data-dir`/临时副本，未触碰 `~/.fasti` |
 
+---
+
+## 10. C-07 变更（生效时间精度：月 → 秒级完整时间戳，v3）· 2026-11
+
+> 依据：`briefs/PMS-brief.md` C-07、`artifacts/architecture.md` **ADR-025 / ADR-026 / §13**、
+> `api-spec.yaml` 的 `conventions.valid_time_semantics`、`database-schema.sql`（schema_version 3）。
+> 性质：数据格式断代（事件/导出 `format_version 2→3`、DDL `schema_version 2→3`）；
+> 用户可见的「录入仍可只填 2026-11」「显示仍是 2026-11」保持不变。
+
+### 10.1 契约摘要（实现落点）
+
+| 维度 | 规则 | 实现 |
+|---|---|---|
+| 存储/导出 | RFC3339 秒精度 + **本机偏移**，不存 UTC-Z | `clock.format_timestamp`；事件 `valid_from`、entities/frontmatter 均为完整值 |
+| 输入三档 | `YYYY-MM`→月起点 / `YYYY-MM-DD`→日起点 / `YYYY-MM-DDTHH:MM[:SS]`→原值；统一附加写入时本机偏移 | `clock.normalize_valid_time` + `validate.require_valid_from` |
+| auto-bump | 粗输入且候选≤head 且同月/同日 ⇒ 当前本机时刻（仍≤head 则 head+1s）；`auto_bumped=true` + warnings | `clock.resolve_valid_from` + `services/facts.py`；CLI stderr/附加行、网页提示条、`--json` |
+| 拒绝 | 显式时刻 ≤ head；粗输入不同桶（回溯更早月/日）⇒ `VALIDATION_VALID_FROM_NOT_AFTER_PREVIOUS`（含 head 显示时刻与提示） | `clock.resolve_valid_from` 不提升 + services 抛错 |
+| 显示自适应 | 日 01 且 00:00:00→月；00:00:00→日；否则秒。段终：null→今；月起点→上一月；日起点→前一日；否则 `display_time(end-1s)` | `clock.display_time` / `clock.display_end`；profile/history/export/CLI 文本 |
+| 区间 | `[valid_from, valid_to)` 左闭右开；`valid_to` 由同 line 下一段推出；按**瞬间**严格递增 ⇒ 无零长 | `fold._require_after_previous` + `_finalize`；`model.line_facts/head_fact` 按瞬间 |
+| 回溯 | `--at` 同三档；粗粒度=粒度起点；说明行标注实际查询瞬间 | `validate.require_at` + `profile.build_profile_at_view` |
+| 格式版本 | `format_version 3` / `schema_version 3` / `contract_version 1.3.0`；v1/v2 不向后兼容 | `constants`、`_shared`/`importer` 格式门、包内 DDL 逐字节同步 |
+| 迁移 | `scripts/migrate_v2_to_v3.py`：v2 月值→月起点+事件偏移、format→3、原子写回、幂等、dry-run | 见 §10.5 |
+
+### 10.2 测试（76 → **93**，全绿）
+
+```
+$ cd workspace && python3 -m unittest discover -s tests
+Ran 93 tests in 1.009s
+OK
+```
+
+新增/重写覆盖（除既有 76 条按 v3 更新外）：
+- `test_month_ids.py`（10）：三档归一、非法输入（月/日/时越界、带时区后缀、小数秒、不存在日期）、
+  自适应显示（月/日/时刻）、`display_end` 四规则、瞬间比较（不同偏移同瞬间）、
+  auto-bump 触发/不触发（显式时刻、更早桶、无 head）。
+- `test_evolution.py`（5）：**同月内再演进被接受**（`auto_bumped=true`、旧段区间到新时刻前 1 秒）、
+  `--at 2026-11`=桶起点 vs 精确时刻区分同月两段、**显式零长区间被拒**、更早桶回溯被拒且失败不落盘、
+  纠正区间不变。
+- `test_cli_web.py`（7→8）：CLI text 自适应显示（`生效 2026-11`）、auto-bump 附加行、
+  `--json` 完整时间戳、`profile at` 说明行；网页 API `auto_bumped=true` + warnings。
+- `test_migrate_v2_to_v3.py`（5）：dry-run 不写回、迁移后 events 与等价 v3 **逐字节一致**、
+  派生 profile/dist **逐字节一致**、幂等、v1 拒绝、零长构造原子失败。
+- 既有测试更新：格式门 v1/v2 拒绝（§13.5 + 迁移脚本名）、导出 frontmatter 完整时间戳、
+  init 事件 `format_version=3`、校验错误码 `VALIDATION_INVALID_VALID_FROM`/`VALIDATION_INVALID_AT`。
+
+### 10.3 三档输入 / auto-bump / 自适应显示实测
+
+```bash
+# 1) 三档输入：月 / 日 / 时刻（存储一律完整时间戳，text 显示自适应）
+$ fasti fact add --category tech --content "输入 2023-01" --valid-from 2023-01
+已录入 fact 01a1c1118ca3（line 01a1c1118ca3 · 技术背景 · 生效 2023-01）
+$ fasti fact add --category tech --content "输入 2024-02-03" --valid-from 2024-02-03
+已录入 fact 01a1c1118cc1（line 01a1c1118cc1 · 技术背景 · 生效 2024-02-03）
+$ fasti fact add --category tech --content "输入 2025-04-05T06:07" --valid-from 2025-04-05T06:07
+已录入 fact 01a1c1118cde（... · 生效 2025-04-05T06:07:00）
+$ fasti fact add --category tech --content "输入 2026-08-09T10:11:12" --valid-from 2026-08-09T10:11:12
+已录入 fact 01a1c1118cfb（... · 生效 2026-08-09T10:11:12）
+
+# --json 存储值（完整 RFC3339 + 本机偏移）
+2023-01-01T00:00:00+08:00 | 2024-02-03T00:00:00+08:00
+2025-04-05T06:07:00+08:00 | 2026-08-09T10:11:12+08:00
+
+# 2) auto-bump：head 在 2026-11，再演进仍填 2026-11
+$ fasti fact add --category tech --content "Python" --valid-from 2026-11
+已录入 fact 01a1c111b017（line 01a1c111b017 · 技术背景 · 生效 2026-11）
+$ fasti fact evolve <短ID> --content "C++" --valid-from 2026-11
+演进：已追加 fact 01a1c111b05d（line 01a1c111b017 · 生效 2026-11-10T00:08:44）
+已在同月/同日之后，按当前时刻 2026-11-10T00:08:44 记录
+提示：fasti render
+
+$ fasti --json fact evolve <短ID> --content "Python" --valid-from 2026-11
+{"auto_bumped": true, "change_type": "evolve",
+ "fact": {"valid_from": "2026-11-10T00:08:55+08:00", ...}, "revision": {...}}
+
+# 3) 自适应显示（月 / 日 / 时刻）
+短ID | line 短ID | 类别 key | 生效 | 内容 | 变更类型 | 首次录入
+... | ... | tech | 2023-01 | 输入 2023-01 | create | ...
+... | ... | tech | 2024-02-03 | 输入 2024-02-03 | create | ...
+... | ... | tech | 2025-04-05T06:07:00 | 输入 2025-04-05T06:07 | create | ...
+... | ... | tech | 2026-08-09T10:11:12 | 输入 2026-08-09T10:11:12 | create | ...
+
+# 4) --at 粗粒度 = 桶起点；精确时刻区分同月两段
+$ fasti profile at --at 2026-11
+# 画像回溯 · 2026-11
+> 实际查询瞬间：2026-11-01T00:00:00+08:00（粗粒度输入按粒度起点解释）。
+- Python（2026-11 至 2026-11-10T00:08:43）
+
+$ fasti profile at --at 2026-11-10T00:08:44
+# 画像回溯 · 2026-11-10T00:08:44
+> 实际查询瞬间：2026-11-10T00:08:44+08:00（粗粒度输入按粒度起点解释）。
+- C++（2026-11-10T00:08:44 至 今）
+```
+
+### 10.4 端到端验证
+
+```bash
+$ python3 run.py verify --deep
+CHECK store.load / store.invariants / sql.constraints / derived.determinism /
+      derived.consistency / derived.freshness / export.roundtrip — 7/7 PASS
+结论：通过
+$ node --check fasti/adapters/web_static/app.js     # exit 0
+$ python3 -m compileall -q fasti scripts            # OK
+行数：57 文件 / 8675 行；无文件 >500（web.py 469 为 ADR-021 存量豁免）
+```
+
+### 10.5 迁移脚本（v2 → v3）与 dry-run 实测
+
+```bash
+# 在「v2 数据目录副本」上演练（真实数据迁移由 Lead 执行；脚本不做备份以免隐藏副作用）
+$ python3 scripts/migrate_v2_to_v3.py --data-dir /tmp/fasti-v2-copy --dry-run
+v2 → v3 迁移计划（数据目录：/tmp/fasti-v2-copy）
+  format_version: 2 → 3；改写事实段 valid_from：2 条
+  seq 9    2025-01  →  2025-01-01T00:00:00+08:00
+  seq 10   2026-11  →  2026-11-01T00:00:00+08:00
+dry-run：未写回 events.jsonl（如确认无误，去掉 --dry-run 重跑）
+
+# 正式迁移（原子写回；成功后删除 state/manifest.json）
+$ python3 scripts/migrate_v2_to_v3.py --data-dir /tmp/fasti-v2-copy
+...
+迁移完成：N 条事件 → format_version 3；请运行 recompute / render / verify --deep。
+```
+
+**强回归（自动化测试断言）**：把「以月精度录入后生成的 v3 事件」降级为 v2 形态，再跑迁移脚本：
+- 迁移后 `events.jsonl` 与等价 v3 store **逐字节一致**（含 ID/recorded_at/偏移/seq）；
+- `recompute + render` 后 `profile/current.md`、`profile/history.md`、`dist/AGENTS.md`、`dist/CLAUDE.md`、
+  `dist/.cursor/rules/fasti.mdc` 与迁移前 v3 store **逐字节一致**（`test_migrate_is_byte_identical...`）；
+- 历史文本仍为「主力语言：Python（2025-01 至 2026-10）」；迁移后同月演进恢复可用（`auto_bumped=true`）。
+
+### 10.6 契约缺口 / 风险（需 Lead / QA 知悉）
+
+1. **auto-bump 是隐式写入**（AS-20）：必须依赖 warnings/`auto_bumped` 告知用户；实现已在 CLI stderr +
+   输出附加行、网页提示条、`--json` 三处明示。若用户想记录「明确的月起点」而 head 已在同月，会得到当前时刻——
+   这是 ADR-025 的裁决（同桶冲突优先接受），请在验收时按 §13.3 场景核对。
+2. **时区假设（AS-21）**：生效时间按本机偏移解释/存储，跨时区后「墙钟显示不变、瞬间边界偏移」；单机自用可接受。
+3. **不向后兼容**：v3 代码拒绝 v1/v2 数据（显式错误 + 迁移指引），没有自动降级；回退靠迁移前备份。
+4. **C-08（相似事实确认）未在本轮实现**：spec v1.3.0 与 C-07 合并发布（`format_version` 仍 3），
+   `CONFLICT_SIMILAR_FACT`/`confirm_token`/`duplicate_confirmation` 属另一任务；本轮只做 C-07。
+5. **用户真实数据未迁移**：本轮未触碰 `~/.fasti`（仍为 v2），迁移脚本已交付但由 Lead 执行；
+   迁移前 v3 CLI 对真实目录会按预期返回 `STORE_FORMAT_UNSUPPORTED`。
+
+### 10.7 本次未覆盖项（如实说明）
+
+| 项 | 原因 | 替代验证 |
+|---|---|---|
+| 用户真实 v2→v3 迁移执行 | 用户数据不在 workspace/ 写权限内，由 Lead 执行 | 脚本 dry-run 实测 + 强回归测试（events/派生逐字节一致）+ 原子失败用例 |
+| 迁移器对极端历史偏移的演练 | 用户现有数据全为 +08:00；跨偏移逻辑以「取事件 recorded_at 偏移」实现 | 单测覆盖偏移解析；构造同 line 严格递增校验与失败原子性 |
+| 浏览器 DOM 级 auto-bump 提示 | 无浏览器自动化 | `node --check` + HTML/JS 静态守卫 + HTTP API `auto_bumped` 实测 |
+| 真实宿主新会话读取 / 跨设备 | 环境限制（同 §9.6） | 产物文本口径不变 + `verify --deep` |
+| C-08 相似事实确认 | 不在本任务范围（见 §10.6-4） | 格式版本/字段已随 spec 合并发布，待下一任务 |
+
+### 10.8 交付声明
+
+- 全部实现位于 `workspace/`；`artifacts/`、`briefs/` 未修改。
+- 本轮**未写入用户 `~/.fasti`**（所有验证用 `--data-dir` 临时目录/副本）；真实迁移由 Lead 执行。
+- **等待 QA 独立验证**：重点核对 §10.3 三档输入/auto-bump/自适应显示、§10.4 `verify --deep` 7/7、
+  §10.5 迁移 dry-run 与强回归，以及 §10.6 的 auto-bump 隐式写入提示是否满足 AS-20。

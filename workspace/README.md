@@ -66,7 +66,7 @@ fasti --help
 | 第三方包 | **无**。不 `pip install` 任何依赖；全程无网络调用 |
 | 文件锁 | `flock`（macOS/Linux）；NFS 等不支持 `flock` 的文件系统不保证（ADR-015） |
 
-依赖自检：`python3 -m unittest discover -s tests -v`（**76 个用例**：v2 标识(UUIDv7)/短前缀/格式门/类别复活/持久化短 ID 守卫 + 写路径原子性（失败不落盘） + **前端 JS↔api-spec 字段契约守卫（fixture 快照，无 artifacts 也可执行）** + 分层/确定性/导出导入/CLI/网页/静态资源守卫，含「禁止 import UI 模块 / 禁止 print / 禁止第三方依赖」的分层断言）。
+依赖自检：`python3 -m unittest discover -s tests -v`（**93 个用例**：v3 时间语义（三档输入/auto-bump/自适应显示/`--at` 桶起点）、UUIDv7/短前缀/格式门/类别复活/持久化守卫 + 写路径原子性 + 前端字段契约守卫（fixture 快照，无 artifacts 也可执行） + v2→v3 迁移脚本/强回归 + 分层/确定性/导出导入/CLI/网页/静态资源守卫，含「禁止 import UI 模块 / 禁止 print / 禁止第三方依赖」的分层断言）。
 
 ---
 
@@ -114,10 +114,12 @@ workspace/
 │       ├── web.py                  # 本机网页表单后端（127.0.0.1 + 令牌 + Origin/Host 校验）
 │       ├── static_files.py         # 同源静态资源白名单（3 条只读路由）
 │       └── web_static/             # index.html + style.css + app.js（零外部请求）
-└── tests/                          # _base.py + 15 个 test_*.py + fixtures/*.json（76 个用例）
+├── tests/                          # _base.py + 16 个 test_*.py + fixtures/*.json（93 个用例）
+└── scripts/                        # 一次性迁移工具（stdlib、离线，不随产品命令暴露）
+    └── migrate_v2_to_v3.py         # v2→v3 事件改写器（--dry-run/原子写回/幂等）
 ```
 
-**为什么 `core/schema/database-schema.sql` 有一份副本**：`verify` 的 `sql.constraints` 检查与导入流水线第 4 步需要把折叠结果载入内存 SQLite 执行同一份 DDL。该文件是从 `artifacts/database-schema.sql` **逐字节复制**的只读副本（schema_version 2，sha256 `0f29b8810e822e6ca8d600b274a903b8570992e7dc0fcebd6f68600794e5a049`），便于离线运行；`artifacts/` 未被修改。也可用环境变量 `FASTI_SCHEMA_PATH` 指向其他 DDL。
+**为什么 `core/schema/database-schema.sql` 有一份副本**：`verify` 的 `sql.constraints` 检查与导入流水线第 4 步需要把折叠结果载入内存 SQLite 执行同一份 DDL。该文件是从 `artifacts/database-schema.sql` **逐字节复制**的只读副本（schema_version 3，sha256 `d11fbac631657cb375302a9cce6296cde3024bb3421032fe0749420481b02a61`），便于离线运行；`artifacts/` 未被修改。也可用环境变量 `FASTI_SCHEMA_PATH` 指向其他 DDL。
 
 ---
 
@@ -225,11 +227,11 @@ python3 run.py import /tmp/bundle --overwrite   # 非空环境必须显式覆盖
 
 ---
 
-## 9. 标识与格式版本（v2 / C-06）与 v1→v2 迁移
+## 9. 标识（C-06）与时间精度（C-07 / v3）及迁移
 
 ### 9.1 标识（ADR-023）
 
-| 对象 | v2 形式 |
+| 对象 | 形式 |
 |---|---|
 | `line_id` / `fact_id` | **UUIDv7**（RFC 9562；36 字符小写规范形式，字典序 = 创建时间序） |
 | 类别身份 | 语义 **`category_key`**（无 `category_id`；7 个模板 key 固定，自定义可省略 → 自动 `c-<UUIDv7 前 12 位>`，如 `c-0190a1b23c4d`） |
@@ -242,35 +244,63 @@ python3 run.py import /tmp/bundle --overwrite   # 非空环境必须显式覆盖
 多命中 → `VALIDATION_AMBIGUOUS_REFERENCE`（退出码 4，`details.candidates` 列候选，最多 10 个）；
 格式非法 → `VALIDATION_INVALID_ID`（退出码 4）。**不静默取第一个**（AS-19）。
 
-> 注意：短 ID 默认 **12 位 = 完整 48-bit 毫秒时间戳**，**不同毫秒创建的 fact/line 前缀必不同**（日常零歧义）。
-> 只有**同一毫秒内创建**多个 ID，或**人为输入 4–11 位更短前缀**时才可能歧义；此时会正确返回
-> `VALIDATION_AMBIGUOUS_REFERENCE`（退出码 4 + 候选列表，禁止静默取第一个），加长到 13–32 位即可。
-> 版本口径：`contract_version = 1.2.1`（ADR-023 v1.5 / api-spec v1.2.1）。
+> 短 ID 默认 **12 位 = 完整 48-bit 毫秒时间戳**，不同毫秒创建的 fact/line 前缀必不同（日常零歧义）；
+> 只有同毫秒创建或人为输入 4–11 位更短前缀时才可能歧义（正确报错列候选）。
 
-### 9.2 格式版本（ADR-024）
+### 9.2 生效时间精度（ADR-025 / C-07，秒级）
 
-- 事件与导出 `format_version: 2`；读取模型 DDL `schema_version: 2`。
-- **不向后兼容**：v2 代码遇到 v1 数据目录 ⇒ `STORE_FORMAT_UNSUPPORTED`（退出码 5，含迁移指引）；
-  v1 导出 bundle ⇒ `IMPORT_UNSUPPORTED_FORMAT_VERSION`（退出码 4，含 UUIDv7 迁移提示）。
-- 迁移方法（architecture.md §12.5）：
-  - **路径 A · 清空重建**（P0 采用）：停写 → 备份/移走旧数据目录（`mv ~/.fasti ~/.fasti.v1-backup`）→
-    `fasti init`（写 v2 事件）→ 重新录入 → `recompute` → `render` → `verify --deep`；
-  - **路径 B · 一次性事件改写器**（真实用户带数据）：备份/导出留档 → 逐事件重写
-    `category_id → category_key`、`migrate_to_category_id → migrate_to_category_key`、
-    序号 ID → UUIDv7、`store_initialized.format_version → 2`、`seq` 保持连续 →
-    原子写回并删除 `state/manifest.json` → `verify --deep` + 导出/导入往返验证。
-- 迁移由 Lead/用户执行（本轮交付未触碰用户 `~/.fasti`；旧数据备份由 Lead 负责）。
+- **存储/事件/导出**：完整 RFC3339、秒精度、**带本机偏移**：`2026-11-01T00:00:00+08:00`（永不存 `YYYY-MM`，也不用 UTC-Z）。
+- **输入三档**（录入负担不变）：
+  - `YYYY-MM` → 该月 1 日 00:00:00；
+  - `YYYY-MM-DD` → 当日 00:00:00；
+  - `YYYY-MM-DDTHH:MM[:SS]` → 原值（秒缺省 00）；
+  - 统一附加**写入时本机偏移**；不接受时区后缀/小数秒/不存在日期 ⇒ `VALIDATION_INVALID_VALID_FROM`。
+- **同粗粒度 auto-bump**：粗输入（无时分秒）且候选瞬间 ≤ 当前 head 且与 head 同月/同日 ⇒ 自动取**当前本机时刻**
+  （若仍 ≤ head 取 head+1s），响应 `auto_bumped: true`，CLI stderr/网页 warnings 明示实际时刻。
+  显式时刻、或回溯到更早桶 ⇒ `VALIDATION_VALID_FROM_NOT_AFTER_PREVIOUS`（不静默改写明确意图）。
+- **显示自适应**：日 01 且 00:00:00 → `YYYY-MM`；00:00:00 → `YYYY-MM-DD`；否则完整时刻。
+  段终：null→「今」；月起点→上一月；日起点→前一日；否则 `display_time(end-1s)`。
+  ⇒ **按月录入的历史数据，迁移后显示文本逐字节不变**（如仍是 `Python（2025-01 至 2026-10）`）。
+- **区间**：仍 `[valid_from, valid_to)` 左闭右开；`valid_to` 由同 line 下一段推出；按**瞬间**严格递增 ⇒ 无零长区间。
+- **回溯**：`fasti profile at --at` 接受同三档；粗粒度 = 该粒度**起点**；输出说明行标注实际查询瞬间。
+
+```bash
+python3 run.py fact add --category tech --content "主力语言：C++" --valid-from 2026-11        # 月
+python3 run.py fact add --category tech --content "转岗"        --valid-from 2026-11-09      # 日
+python3 run.py fact change <短ID> --type evolve --content "主力语言：Java" \
+        --valid-from 2026-11-09T23:50:00                                                      # 时刻
+python3 run.py profile at --at 2026-06            # 粗粒度 = 2026-06-01T00:00:00+08:00
+python3 run.py profile at --at 2026-11-09T23:50   # 可区分同月内多段
+```
+
+### 9.3 格式版本与迁移（ADR-024 / ADR-026）
+
+- 事件与导出 `format_version: 3`；读取模型 DDL `schema_version: 3`；`contract_version = 1.3.0`。
+- **不向后兼容**：
+  - v1/v2 数据目录 ⇒ `STORE_FORMAT_UNSUPPORTED`（退出码 5，消息指向 architecture.md §13.5 与迁移脚本）；
+  - v1/v2 导出 bundle ⇒ `IMPORT_UNSUPPORTED_FORMAT_VERSION`（退出码 4）。
+- **v2 → v3 一次性迁移**（真实数据带 `recorded_at`/真实顺序；不提供自动降级）：
+  1. 停写 → **双备份**：`mv ~/.fasti ~/.fasti.v2-backup` + `fasti export --data-dir <副本>` 留档；
+  2. 在副本上演练：`python3 scripts/migrate_v2_to_v3.py --data-dir <副本> --dry-run`（只打印变更表）；
+  3. 正式迁移：去掉 `--dry-run`（原子写回；成功后删除 `state/manifest.json`）；
+  4. `fasti recompute && fasti render && fasti verify --deep`；
+  5. **成功判据**：迁移 + 重算 + 渲染后 `profile/*.md`、`dist/*` 与迁移前 **sha256 逐字节一致**（自适应显示保证）。
+  6. 回退：恢复备份目录 + 旧代码 tag（不提供 v3→v2 自动降级）。
+- v1 → v2 的历史方法（UUIDv7/类别 key 改造）见 architecture.md §12.5；v1 数据需先按该路径升级，两个断代不能一步跳过。
 
 ---
 
 ## 10. 验证方式
 
 ```bash
-# A. 自动化自测（76 个用例；含 UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约 + 分层/确定性/导出导入/CLI/网页/静态资源）
+# A. 自动化自测（93 个用例；含 v3 时间语义/auto-bump/自适应显示/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约 + 分层/确定性/导出导入/CLI/网页/静态资源）
 python3 -m unittest discover -s tests -v
 
 # B. 端到端自检（存储不变量 + 内存 SQLite 约束 + 确定性 + 三产物一致 + 导出导入往返）
 python3 run.py verify --deep
+
+# C. v2→v3 迁移演练（在备份副本上；真实数据迁移由用户/Lead 执行）
+python3 scripts/migrate_v2_to_v3.py --data-dir /tmp/fasti-v2-copy --dry-run
 
 # C. 冒烟（干净临时目录）
 T=$(mktemp -d); python3 run.py --data-dir "$T" init
@@ -285,15 +315,15 @@ python3 run.py --data-dir "$T" verify --deep && echo SMOKE-OK
 
 ## 11. 文件规模预算（ADR-021）
 
-`workspace/` 下所有 `.py` / `.html` / `.css` / `.js` 文件均 **≤500 行**（实测最大 467 行，共 55 个文件 / 7339 行）；
+`workspace/` 下所有 `.py` / `.html` / `.css` / `.js` 文件均 **≤500 行**（实测最大 469 行，共 57 个文件 / 8675 行）；
 本次拆分新增文件**目标 ≤300 行**，仅两个已在 ADR-021 登记的豁免文件超目标：
 
 | 文件 | 行数 | 状态 |
 |---|---|---|
-| `fasti/adapters/web.py` | 467 | 存量文件 + 静态路由；ADR-021 目标豁免（<500） |
-| `fasti/core/fold.py` / `profile.py` / `store.py` | 365 / 336 / 329 | 存量登记（未超硬上限）；v2 增加 UUIDv7/复活校验 |
-| `fasti/adapters/web_static/app.js` | 338 | 单个 IIFE 共享闭包状态；ADR-021 目标豁免（<500） |
-| 其余全部源码 / 静态资源 | ≤280 | 达标（含 `export.py 272`、`importer.py 230`、`services/facts.py 229`、`ids.py 183`、`api.py` 门面） |
+| `fasti/adapters/web.py` | 469 | 存量文件 + 静态路由；ADR-021 目标豁免（<500） |
+| `fasti/core/fold.py` / `profile.py` / `store.py` | 377 / 346 / 329 | 存量登记（未超硬上限）；v3 增加时间戳/瞬间校验 |
+| `fasti/adapters/web_static/app.js` | 352 | 单个 IIFE 共享闭包状态；ADR-021 目标豁免（<500） |
+| 其余全部源码 / 静态资源 | ≤300 | 达标（含 `clock.py 261`、`scripts/migrate_v2_to_v3.py 210`、`export.py`、`services/facts.py`、`ids.py`、`api.py` 门面） |
 
 规模治理的逐文件迁移映射、AST 等价验证、golden 基线方法与逐 commit 证据见
 `artifacts/architecture.md` §11 与 [`SELFTEST.md`](SELFTEST.md) §8。
@@ -309,6 +339,6 @@ python3 run.py --data-dir "$T" verify --deep && echo SMOKE-OK
 5. **并发只做兜底**：第二个写命令会等待 5 秒后报 `CONFLICT_STORE_LOCKED`（已实测），不做合并。
 6. **同秒内多次变更**按 revision 序号定序（时间戳为秒精度，符合 AS-10）；跨秒即可按时间区分。
 7. 页面是极简表单（非 UI 精修），只实现 `api-spec.yaml` §5 的 16 个端点，不做导出/导入（设计上留给 CLI）。
-8. **v1 数据不兼容**：用户旧 `~/.fasti`（format_version 1）会被明确拒绝，需按 §9.2 迁移（Lead 已备份 `~/fasti-backup-v1/`）。本轮未触碰用户数据目录。
+8. **v1/v2 数据不兼容**：用户旧数据（format_version 1 或 2）会被明确拒绝；v2→v3 用 `scripts/migrate_v2_to_v3.py`（§9.3），v1 需先按 architecture §12.5 升级。本轮未触碰用户 `~/.fasti`（真实数据迁移由 Lead 执行）。
 9. **短 ID 位数**：默认 12 位（= 完整 48-bit 时间戳，不同毫秒必不同）；仅同毫秒创建或 4–11 位更短前缀会歧义（正确报错列候选）。极高频批量（同毫秒多个）录入时需加长前缀或用 `--json` 完整 ID。
 10. **UUIDv7 时间序依赖本机时钟**（AS-17）：时钟回拨只影响排序近似，唯一性不受影响；`recorded_at` 仍是审计真相。
