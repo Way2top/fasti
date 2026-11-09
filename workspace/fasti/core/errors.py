@@ -39,6 +39,8 @@ EXIT_CODES = {
     "VALIDATION_CATEGORY_DELETED": 4,
     "VALIDATION_INVALID_ID": 4,
     "VALIDATION_CATEGORY_KEY_TAKEN": 4,
+    "CONFLICT_SIMILAR_FACT": 5,
+    "VALIDATION_INVALID_CONFIRM_TOKEN": 4,
     "VALIDATION_CATEGORY_KEY_INVALID": 4,
     "VALIDATION_CATEGORY_NAME_TAKEN": 4,
     "VALIDATION_CATEGORY_ALREADY_DELETED": 4,
@@ -101,6 +103,13 @@ DEFAULT_MESSAGES = {
     "VALIDATION_CATEGORY_DELETED": "目标类别已删除（不存在或未启用），无法录入事实",
     "VALIDATION_INVALID_ID": "ID 形式不合法：请提供完整 UUIDv7（36 字符）或 4~32 位十六进制短前缀",
     "VALIDATION_CATEGORY_KEY_TAKEN": "类别 key 已被占用",
+    "CONFLICT_SIMILAR_FACT": (
+        "检测到相似记录：请确认是更新（改成演进/纠正）还是新增；"
+        "确认新增请携带确认令牌重试"
+    ),
+    "VALIDATION_INVALID_CONFIRM_TOKEN": (
+        "确认令牌已失效（内容/类别/候选集已变化）：请重新确认后再提交"
+    ),
     "VALIDATION_CATEGORY_KEY_INVALID": "类别 key 不合法：需匹配 ^[a-z][a-z0-9_-]{0,31}$",
     "VALIDATION_CATEGORY_NAME_TAKEN": "类别名称已被占用",
     "VALIDATION_CATEGORY_ALREADY_DELETED": "类别已删除，不能再执行该操作",

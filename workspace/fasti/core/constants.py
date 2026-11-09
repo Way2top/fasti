@@ -16,13 +16,19 @@ L0_SPEC_NAME = "Open Memory Ledger (OML)"
 
 # --- 版本 -------------------------------------------------------------------
 APP_VERSION = "0.1.0"
-CONTRACT_VERSION = "1.3.0"
+CONTRACT_VERSION = "1.4.0"
 FORMAT_VERSION = 3
 MANIFEST_VERSION = 1
 BUNDLE_VERSION = 1
 SCHEMA_VERSION = 3
 
 # --- 内容约束（api-spec conventions.content_rules / AS-08） ------------------
+# C-08 相似检测（ADR-027）：多级常量，不提供用户配置项
+SIMILARITY_THRESHOLD = 0.60          # Tier1：措辞高度接近
+SIMILARITY_TOPIC_THRESHOLD = 0.25    # Tier2：粗相似下限
+SIMILARITY_MIN_SHARED_TOKENS = 2     # Tier2：共享 ASCII 实体词门槛
+SIMILARITY_TOKEN_ALGORITHM = "ngram-entity-v2"
+
 UUID7_CANONICAL_PATTERN = (r'^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}'
                           r'-[0-9a-f]{12}$')
 CONTENT_MIN_LEN = 1
