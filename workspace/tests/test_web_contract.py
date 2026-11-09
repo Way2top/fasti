@@ -26,7 +26,7 @@ APP_JS = os.path.join(ROOT, "fasti", "adapters", "web_static", "app.js")
 
 # 扫描的别名：只覆盖「响应/领域对象」；form.* / body.* 是 DOM/请求体构造，不在此列
 SCAN_ALIASES = ("item", "category", "fact", "counts", "freshness", "entry",
-                "payload", "err", "data")
+                "payload", "err", "data", "candidate", "details")
 
 # 别名 → fixture 里的对象类型
 DEFAULT_OBJECT = {
@@ -38,6 +38,8 @@ DEFAULT_OBJECT = {
     "entry": "StatusReportHostAccessItem",   # data.host_access.map(function (entry) {...})
     "payload": "ResponseEnvelope",           # fetch 响应封套 / 本地请求体（后者见白名单）
     "err": "Error",
+    "candidate": "SimilarityCandidate",   # C-08 409 details.candidates[i]
+    "details": "ConflictDetails",         # C-08 409 error.details
     # "data"：端点返回的 data 包装层，字段逐个白名单（见下），未登记即 fail
 }
 
@@ -213,7 +215,8 @@ class TestWebStaticFieldContract(unittest.TestCase):
         required = {"Category", "Fact", "StatusReport", "StatusReportCounts",
                     "StatusReportFreshness", "StatusReportHostAccessItem",
                     "RenderResult", "RenderArtifactItem", "RecomputeResult",
-                    "ResponseEnvelope", "Error"}
+                    "ResponseEnvelope", "Error", "SimilarityCandidate",
+                    "ConflictDetails"}
         missing = sorted(required - set(self.objects))
         if missing:
             self.fail("fixture 缺少对象类型：%s" % missing)

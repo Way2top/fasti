@@ -27,3 +27,43 @@
   .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: #eef2f6; color: #444d56; }
   .pill.warn { background: #fff3cd; color: #7a5b00; }
   .pill.ok { background: #e6f4ea; color: #1a7f37; }
+
+.existing {
+  margin: 6px 0 10px;
+  padding: 8px 10px;
+  border: 1px solid #d8d8d8;
+  border-radius: 6px;
+  background: #fafafa;
+}
+.existing ul { margin: 6px 0 0; padding-left: 18px; }
+.existing button.link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #1a5fb4;
+  text-align: left;
+  cursor: pointer;
+  font-size: 13px;
+}
+.existing button.link:hover { text-decoration: underline; }
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+.modal-box {
+  background: #fff;
+  color: #222;
+  border-radius: 8px;
+  padding: 16px 18px;
+  max-width: 560px;
+  width: calc(100% - 40px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+}
+.modal-box h3 { margin: 0 0 8px; }
+.modal-box ul { margin: 8px 0; padding-left: 18px; }
+.modal-box .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }

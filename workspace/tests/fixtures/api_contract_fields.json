@@ -1,5 +1,5 @@
 {
-  "_comment": "前端 JS 字段契约快照（tests/test_web_contract.py 使用）。随仓库提交，保证无 artifacts/ 时守卫仍执行；artifacts/api-spec.yaml 存在时测试会做交叉校验，fixture 漂移即 fail。",
+  "_comment": "前端 JS 字段契约快照（tests/test_web_contract.py 使用）。Category/Fact 等 由 api-spec $defs 交叉校验；SimilarityCandidate/ConflictDetails 来自 conventions.similarity 与 web 409 错误详情（C-08），为前端弹窗契约。",
   "contract_version": "1.2.1",
   "source": "artifacts/api-spec.yaml（domain_model.$defs / conventions.error_envelope / core_api.output_json）",
   "objects": {
@@ -81,6 +81,17 @@
       "message",
       "details",
       "location"
+    ],
+    "SimilarityCandidate": [
+      "fact_id",
+      "content",
+      "similarity",
+      "shared_entities"
+    ],
+    "ConflictDetails": [
+      "field",
+      "candidates",
+      "confirm_token"
     ]
   }
 }

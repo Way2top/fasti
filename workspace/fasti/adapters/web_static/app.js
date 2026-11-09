@@ -2,6 +2,9 @@
   "use strict";
   var TOKEN = new URLSearchParams(window.location.search).get("t") || "";
   var categoryNames = {};
+  var pendingAdd = null;
+  var dupCandidates = [];
+  var dupConfirmToken = "";
 
   function displayTime(value) {
     if (!value) { return ""; }
@@ -123,10 +126,75 @@
       var rows = document.getElementById("category-rows");
       rows.innerHTML = "";
       data.items.forEach(function (item) { rows.appendChild(categoryRow(item)); });
+      refreshExistingFacts(select.value);
     }).catch(function (err) {
       document.getElementById("category-rows").innerHTML = "<tr><td colspan='5'>读取失败：" +
         (err.message || err.code) + "</td></tr>";
     });
+  }
+
+  function refreshExistingFacts(categoryKey) {
+    var block = document.getElementById("existing-facts");
+    var list = document.getElementById("existing-facts-list");
+    if (!categoryKey) { block.style.display = "none"; list.innerHTML = ""; return; }
+    return call("/api/facts?category=" + encodeURIComponent(categoryKey) + "&state=current")
+      .then(function (data) {
+        list.innerHTML = "";
+        if (!data.items.length) { block.style.display = "none"; return; }
+        data.items.forEach(function (fact) {
+          var row = document.createElement("li");
+          var button = document.createElement("button");
+          button.type = "button";
+          button.className = "link";
+          button.textContent = displayTime(fact.valid_from) + " · " + fact.content;
+          button.addEventListener("click", function () { selectExistingFact(fact); });
+          row.appendChild(button);
+          list.appendChild(row);
+        });
+        block.style.display = "block";
+      })
+      .catch(function () { block.style.display = "none"; });
+  }
+
+  function selectExistingFact(fact) {
+    var form = document.getElementById("change-form");
+    var select = document.getElementById("change-fact");
+    var found = false;
+    Array.prototype.forEach.call(select.options, function (option) {
+      if (option.value === fact.fact_id) { found = true; }
+    });
+    if (!found) {
+      var option = document.createElement("option");
+      option.value = fact.fact_id;
+      option.textContent = fact.fact_id.replace(/-/g, "").slice(0, 12) + " · " + fact.content;
+      select.appendChild(option);
+    }
+    select.value = fact.fact_id;
+    form.content.value = fact.content;
+    form.change_type.value = "evolve";
+    form.valid_from.value = "";
+    document.getElementById("add-msg").textContent =
+      "已选「" + fact.content + "」：请在上方选择演进/纠正并提交（不会新增重复事实）";
+    form.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function showDupModal(err) {
+    dupCandidates = (err.details && err.details.candidates) || [];
+    dupConfirmToken = (err.details && err.details.confirm_token) || "";
+    var list = document.getElementById("dup-candidates");
+    list.innerHTML = "";
+    dupCandidates.forEach(function (candidate) {
+      var row = document.createElement("li");
+      row.textContent = "相似度 " + candidate.similarity + " · " + candidate.content +
+        "（fact " + candidate.fact_id.replace(/-/g, "").slice(0, 12) + "）";
+      list.appendChild(row);
+    });
+    document.getElementById("dup-modal").style.display = "flex";
+  }
+
+  function hideDupModal() {
+    document.getElementById("dup-modal").style.display = "none";
+    pendingAdd = null;
   }
 
   function categoryRow(item) {
@@ -248,10 +316,69 @@
     }
     call("/api/facts", { method: "POST", body: body }).then(function (data) {
       form.reset();
+      refreshExistingFacts(form.category.value);
       showOk(msg, "已保存 " + data.fact.fact_id + "（画像已变更，记得点击「渲染宿主产物」）");
       refreshAll();
-    }).catch(function (err) { showError(form, err); });
+    }).catch(function (err) {
+      if (err.code === "CONFLICT_SIMILAR_FACT") {
+        pendingAdd = body;
+        showDupModal(err);
+      } else {
+        showError(form, err);
+      }
+    });
   });
+
+  document.querySelector("#add-form select[name=category]").addEventListener("change", function (event) {
+    refreshExistingFacts(event.currentTarget.value);
+  });
+
+  document.getElementById("dup-confirm").addEventListener("click", function () {
+    var body = pendingAdd;
+    var modal = document.getElementById("dup-modal");
+    if (!body || !dupConfirmToken) { hideDupModal(); return; }
+    body = JSON.parse(JSON.stringify(body));
+    body.confirm_token = dupConfirmToken;
+    modal.style.display = "none";
+    var form = document.getElementById("add-form");
+    call("/api/facts", { method: "POST", body: body }).then(function (data) {
+      form.reset();
+      refreshExistingFacts(form.category.value);
+      showOk(document.getElementById("add-msg"),
+             "已确认新增 " + data.fact.fact_id + "（审计痕迹已保留）");
+      pendingAdd = null;
+      refreshAll();
+    }).catch(function (err) { showError(form, err); pendingAdd = null; });
+  });
+
+  function switchToChange(changeType) {
+    var form = document.getElementById("change-form");
+    if (!dupCandidates.length) { hideDupModal(); return; }
+    var candidate = dupCandidates[0];
+    var select = document.getElementById("change-fact");
+    var found = false;
+    Array.prototype.forEach.call(select.options, function (option) {
+      if (option.value === candidate.fact_id) { found = true; }
+    });
+    if (!found) {
+      var option = document.createElement("option");
+      option.value = candidate.fact_id;
+      option.textContent = candidate.fact_id.replace(/-/g, "").slice(0, 12) + " · " + candidate.content;
+      select.appendChild(option);
+    }
+    select.value = candidate.fact_id;
+    form.change_type.value = changeType;
+    form.content.value = pendingAdd ? pendingAdd.content : candidate.content;
+    form.valid_from.value = pendingAdd ? pendingAdd.valid_from : "";
+    document.getElementById("dup-modal").style.display = "none";
+    document.getElementById("change-msg").textContent =
+      "已预填「" + candidate.content + "」：请确认变更类型与生效时间后提交";
+    form.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  document.getElementById("dup-evolve").addEventListener("click", function () { switchToChange("evolve"); });
+  document.getElementById("dup-correct").addEventListener("click", function () { switchToChange("correct"); });
+  document.getElementById("dup-cancel").addEventListener("click", hideDupModal);
 
   document.getElementById("change-form").addEventListener("submit", function (event) {
     event.preventDefault();

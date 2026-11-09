@@ -25,6 +25,10 @@
         <select name="category" id="add-category"><option value="">加载中…</option></select>
         <span class="err" data-field="category"></span>
       </label>
+      <div id="existing-facts" class="existing" style="display:none">
+        <p class="small">该类别当前有效事实（点击条目可切换到「修订事实」，避免重复新增）</p>
+        <ul id="existing-facts-list"></ul>
+      </div>
       <label>内容（单行）
         <input name="content" maxlength="2000" placeholder="如：主力语言：C++">
         <span class="err" data-field="content"></span>
@@ -138,6 +142,20 @@
     <p class="small">渲染后磁盘上的产物立即更新；宿主（DSH / Claude Code / Cursor）在新开会话时读取。</p>
   </section>
 </main>
+
+<div id="dup-modal" class="modal" style="display:none">
+  <div class="modal-box">
+    <h3>检测到相似记录</h3>
+    <p class="small">这是更新还是新增？服务端已拦截，请显式选择；确认新增会留下审计痕迹。</p>
+    <ul id="dup-candidates"></ul>
+    <div class="row">
+      <button type="button" id="dup-evolve">改成演进</button>
+      <button type="button" id="dup-correct">改成纠正</button>
+      <button type="button" id="dup-confirm">确认这确实是新增</button>
+      <button type="button" class="secondary" id="dup-cancel">取消</button>
+    </div>
+  </div>
+</div>
 
 <script src="/app.js"></script>
 </body>

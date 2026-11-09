@@ -213,6 +213,17 @@ class TestCliAndWeb(unittest.TestCase):
         # P1 回归：短 ID 必须先去掉连字符再截 12 位（与 CLI 一致），不能显示 "01a1c0c9-c2f"
         self.assertIn('replace(/-/g, "").slice(0, 12)', app_js)
         self.assertNotIn("fact.fact_id.slice(0, 12)", app_js)
+        # C-08 A（预防）：类别当前有效事实列表 + 409 弹窗 + 带令牌重发（纯前端，复用既有端点）
+        self.assertIn("existing-facts", app_js)
+        self.assertIn("/api/facts?category=", app_js)
+        self.assertIn("&state=current", app_js)
+        self.assertIn("refreshExistingFacts", app_js)
+        self.assertIn("existing-facts-list", index)
+        self.assertIn("CONFLICT_SIMILAR_FACT", app_js)
+        self.assertIn("dup-modal", index)
+        self.assertIn("confirm_token", app_js)
+        self.assertIn("改成演进", index)
+        self.assertIn("确认这确实是新增", index)
 
 
 if __name__ == "__main__":
