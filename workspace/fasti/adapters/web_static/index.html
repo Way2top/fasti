@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fasti · 个人画像</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <h1>Fasti · 个人画像</h1>
+  <p>仅本机可访问（服务只绑 127.0.0.1）· 断网可用 · 页面不缓存画像，所有内容由核心层实时渲染</p>
+</header>
+
+<main>
+  <section>
+    <h2>状态 <span class="hint">画像是否最新 / 宿主产物是否待更新</span></h2>
+    <div id="status-box" class="small">加载中…</div>
+  </section>
+
+  <section>
+    <h2>新增事实 <span class="hint">必填：类别、内容、从何时起为真</span></h2>
+    <form id="add-form" novalidate>
+      <label>类别
+        <select name="category" id="add-category"><option value="">加载中…</option></select>
+        <span class="err" data-field="category"></span>
+      </label>
+      <label>内容（单行）
+        <input name="content" maxlength="2000" placeholder="如：主力语言：C++">
+        <span class="err" data-field="content"></span>
+      </label>
+      <label>从何时起为真（YYYY-MM）
+        <input name="valid_from" placeholder="2026-11">
+        <span class="err" data-field="valid_from"></span>
+      </label>
+      <div class="row">
+        <button type="submit">保存</button>
+        <span class="msg" id="add-msg"></span>
+      </div>
+    </form>
+  </section>
+
+  <section>
+    <h2>修订事实 <span class="hint">必须选择「演进」或「纠正」</span></h2>
+    <form id="change-form" novalidate>
+      <label>事实
+        <select name="fact_id" id="change-fact"><option value="">加载中…</option></select>
+        <span class="err" data-field="fact_id"></span>
+      </label>
+      <label>变更类型（必选）
+        <select name="change_type">
+          <option value="">请选择…</option>
+          <option value="evolve">演进（真的变了：从某月起是新的值）</option>
+          <option value="correct">纠正（当初记错了：区间不变，只改内容）</option>
+        </select>
+        <span class="err" data-field="change_type"></span>
+      </label>
+      <label>新内容（单行）
+        <input name="content" maxlength="2000">
+        <span class="err" data-field="content"></span>
+      </label>
+      <div class="row">
+        <label>新的生效时间（仅演进需要，YYYY-MM）
+          <input name="valid_from" placeholder="2026-11">
+          <span class="err" data-field="valid_from"></span>
+        </label>
+        <label>备注（仅纠正可用，可选）
+          <input name="note" maxlength="500">
+          <span class="err" data-field="note"></span>
+        </label>
+      </div>
+      <div class="row">
+        <button type="submit">提交变更</button>
+        <span class="msg" id="change-msg"></span>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button type="button" class="secondary" id="delete-fact">删除所选事实（墓碑，历史保留）</button>
+      </div>
+    </form>
+  </section>
+
+  <section>
+    <h2>当前画像 <span class="hint">由核心层渲染，页面原样展示</span>
+      <button type="button" class="secondary" id="refresh-profile" style="float:right">刷新</button>
+    </h2>
+    <pre id="profile-text">加载中…</pre>
+  </section>
+
+  <section>
+    <h2>历史记录 <span class="hint">演进 / 纠正 / 删除 / 类别变更</span></h2>
+    <pre id="history-text">加载中…</pre>
+  </section>
+
+  <section>
+    <h2>时点回溯 <span class="hint">按生效时间（月精度，左闭右开），基于当前已知事实</span></h2>
+    <form id="at-form" novalidate>
+      <div class="row">
+        <label>查询时点（YYYY-MM）
+          <input name="at" placeholder="2026-06">
+          <span class="err" data-field="at"></span>
+        </label>
+        <button type="submit" style="align-self:flex-end">查询</button>
+      </div>
+    </form>
+    <pre id="at-text"></pre>
+  </section>
+
+  <section>
+    <h2>类别管理 <span class="hint">7 个默认模板 + 自定义；可关闭 / 新增 / 删除</span></h2>
+    <table>
+      <thead><tr><th>key</th><th>名称</th><th>来源</th><th>状态</th><th>操作</th></tr></thead>
+      <tbody id="category-rows"><tr><td colspan="5">加载中…</td></tr></tbody>
+    </table>
+    <form id="cat-add-form" novalidate style="margin-top:12px">
+      <div class="row">
+        <label>新类别名称
+          <input name="name" maxlength="40" placeholder="如：家庭情况">
+          <span class="err" data-field="name"></span>
+        </label>
+        <label>key（可选，小写字母开头）
+          <input name="key" maxlength="32" placeholder="family">
+          <span class="err" data-field="key"></span>
+        </label>
+        <button type="submit" style="align-self:flex-end">新增类别</button>
+        <span class="msg" id="cat-add-msg"></span>
+      </div>
+    </form>
+  </section>
+
+  <section>
+    <h2>渲染 <span class="hint">改完事实后：先重算画像，再渲染宿主产物</span></h2>
+    <div class="row">
+      <button type="button" id="recompute">重算画像</button>
+      <button type="button" id="render">渲染宿主产物</button>
+      <span class="msg" id="render-msg"></span>
+    </div>
+    <pre id="render-detail" style="display:none"></pre>
+    <p class="small">渲染后磁盘上的产物立即更新；宿主（DSH / Claude Code / Cursor）在新开会话时读取。</p>
+  </section>
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>

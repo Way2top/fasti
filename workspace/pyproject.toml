@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fasti"
+version = "0.1.0"
+description = "Fasti · 个人画像自用工具（P0）：事件日志 + 确定性折叠，一份源渲染多宿主"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+dependencies = []
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
+  "License :: OSI Approved :: Apache Software License",
+]
+
+[project.scripts]
+fasti = "fasti.adapters.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["fasti*"]
+
+[tool.setuptools.package-data]
+"fasti.core" = ["templates/*.json", "schema/*.sql"]
+"fasti.adapters" = ["web_static/*.html", "web_static/*.css", "web_static/*.js"]

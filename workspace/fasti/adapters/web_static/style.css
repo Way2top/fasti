@@ -1,0 +1,29 @@
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; background: #f6f7f9; color: #1f2328; line-height: 1.55; }
+  header { padding: 18px 24px 10px; background: #fff; border-bottom: 1px solid #e4e7eb; }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 4px 0 0; color: #6a737d; font-size: 13px; }
+  main { max-width: 980px; margin: 0 auto; padding: 18px 16px 48px; display: grid; gap: 16px; }
+  section { background: #fff; border: 1px solid #e4e7eb; border-radius: 10px; padding: 16px 18px; }
+  section h2 { margin: 0 0 10px; font-size: 16px; }
+  section h2 .hint { font-size: 12px; font-weight: normal; color: #6a737d; margin-left: 8px; }
+  label { display: block; margin: 8px 0; font-size: 13px; color: #444d56; }
+  label > input, label > select, label > textarea { display: block; width: 100%; margin-top: 4px; padding: 7px 9px; font-size: 14px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; }
+  label > input:focus, label > select:focus { outline: 2px solid #b9d4ff; border-color: #7aa7f0; }
+  button { padding: 7px 14px; font-size: 14px; border: 1px solid #1f6feb; background: #1f6feb; color: #fff; border-radius: 6px; cursor: pointer; }
+  button.secondary { background: #fff; color: #1f6feb; }
+  button:disabled { opacity: .55; cursor: default; }
+  pre { margin: 10px 0 0; padding: 12px; background: #f8f9fb; border: 1px solid #e4e7eb; border-radius: 8px; white-space: pre-wrap; word-break: break-word; font-size: 13px; max-height: 460px; overflow: auto; }
+  .err { display: block; color: #cf222e; font-size: 12px; min-height: 16px; margin-top: 2px; }
+  .msg { display: inline-block; margin-left: 10px; font-size: 13px; color: #1a7f37; }
+  .msg.bad { color: #cf222e; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eef0f3; vertical-align: top; }
+  th { color: #6a737d; font-weight: 600; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .row > label { flex: 1 1 200px; margin: 4px 0; }
+  .small { font-size: 12px; color: #6a737d; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: #eef2f6; color: #444d56; }
+  .pill.warn { background: #fff3cd; color: #7a5b00; }
+  .pill.ok { background: #e6f4ea; color: #1a7f37; }

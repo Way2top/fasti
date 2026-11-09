@@ -1,0 +1,12 @@
+{
+  "format_version": 1,
+  "categories": [
+    {"key": "basics", "display_name": "基本背景", "template_order": 1},
+    {"key": "tech", "display_name": "技术背景", "template_order": 2},
+    {"key": "experience", "display_name": "工作经历", "template_order": 3},
+    {"key": "projects", "display_name": "当前项目", "template_order": 4},
+    {"key": "communication", "display_name": "沟通偏好", "template_order": 5},
+    {"key": "state", "display_name": "当前状态", "template_order": 6},
+    {"key": "goals", "display_name": "长期目标", "template_order": 7}
+  ]
+}

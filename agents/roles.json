@@ -1,0 +1,139 @@
+{
+  "$schema": "https://example.invalid/pms/roles.schema.json",
+  "version": "1.0",
+  "project": "PMS",
+  "generatedAt": "2026-11-09",
+  "description": "PMS 项目子代理角色注册表。每条记录严格对应 agents/contracts/<id>.system.md 中的角色契约，不扩展职责。",
+  "paths": {
+    "artifacts": "artifacts/",
+    "workspace": "workspace/",
+    "contracts": "agents/contracts/",
+    "skills": ".dsh/skills/"
+  },
+  "roles": [
+    {
+      "id": "pm",
+      "displayName": "产品经理",
+      "mission": "把模糊需求转化为可执行、可验收的产品规格",
+      "inputDependencies": [
+        "用户原始诉求 / 业务方描述",
+        "docs/reference/ 参考材料（仅作参考依据，不构成既定需求）",
+        "artifacts/product-spec.md（若存在，作为迭代基线）"
+      ],
+      "outputPaths": [
+        "artifacts/product-spec.md"
+      ],
+      "writablePaths": [
+        "artifacts/product-spec.md"
+      ],
+      "readonly": false,
+      "systemPrompt": "agents/contracts/pm.system.md",
+      "skill": "role-pm",
+      "qualityGates": [
+        "每个功能至少 3 条可测试的验收标准",
+        "明确列出「本迭代不做」且不为空",
+        "全文无技术选型与实现细节",
+        "所有【待架构师确认】已汇总为待确认清单"
+      ],
+      "failureStrategy": "需求矛盾时列出冲突点并请求人类决策，不自行假设",
+      "handoffTo": ["architect"]
+    },
+    {
+      "id": "architect",
+      "displayName": "架构师",
+      "mission": "基于产品规格产出可实现的技术方案与接口契约",
+      "inputDependencies": [
+        "artifacts/product-spec.md"
+      ],
+      "outputPaths": [
+        "artifacts/architecture.md",
+        "artifacts/api-spec.yaml",
+        "artifacts/database-schema.sql"
+      ],
+      "writablePaths": [
+        "artifacts/architecture.md",
+        "artifacts/api-spec.yaml",
+        "artifacts/database-schema.sql"
+      ],
+      "readonly": true,
+      "readonlyScope": "不写业务代码；对 workspace/ 与 product-spec.md 只读",
+      "systemPrompt": "agents/contracts/architect.system.md",
+      "skill": "role-architect",
+      "qualityGates": [
+        "接口契约可被开发者直接消费",
+        "数据模型标注主键、外键、索引意图",
+        "每条 ADR 均含备选方案与未采用理由",
+        "每条 P0/P1 用户故事均有方案落点，无孤儿需求"
+      ],
+      "failureStrategy": "信息不足时输出「假设清单」并标注风险等级，高风险项标【需人类确认】",
+      "handoffTo": ["developer", "pm"]
+    },
+    {
+      "id": "developer",
+      "displayName": "开发工程师",
+      "mission": "按架构契约实现可验证的代码",
+      "inputDependencies": [
+        "artifacts/api-spec.yaml",
+        "artifacts/database-schema.sql",
+        "artifacts/architecture.md",
+        "artifacts/product-spec.md（仅用于理解验收标准）"
+      ],
+      "outputPaths": [
+        "workspace/",
+        "workspace/SELFTEST.md",
+        "workspace/README.md"
+      ],
+      "writablePaths": [
+        "workspace/"
+      ],
+      "readonly": false,
+      "readonlyScope": "不修改 spec 类产物",
+      "systemPrompt": "agents/contracts/developer.system.md",
+      "skill": "role-developer",
+      "qualityGates": [
+        "提交前已实际执行本地自测，输出已粘贴进 SELFTEST.md",
+        "SELFTEST.md 含可复现的「如何验证」说明",
+        "每条 P0 验收标准有对应自测用例或说明未覆盖原因",
+        "无未声明依赖，无对 spec 类产物的改动"
+      ],
+      "failureStrategy": "报告已完成部分、具体阻塞点、所需最小协助；不反复硬重试",
+      "handoffTo": ["qa"]
+    },
+    {
+      "id": "qa",
+      "displayName": "QA 质量门禁",
+      "mission": "独立验证交付物是否满足验收标准，拥有通过/打回权限",
+      "inputDependencies": [
+        "artifacts/product-spec.md（验收标准为唯一判定依据）",
+        "workspace/（Developer 交付物）",
+        "workspace/SELFTEST.md"
+      ],
+      "outputPaths": [
+        "artifacts/test-report.md"
+      ],
+      "writablePaths": [
+        "artifacts/test-report.md"
+      ],
+      "readonly": true,
+      "readonlyScope": "不修改业务代码与 spec 类产物",
+      "systemPrompt": "agents/contracts/qa.system.md",
+      "skill": "role-qa",
+      "qualityGates": [
+        "每条验收标准至少对应一个可复现的验证步骤",
+        "所有判定都有可引用的证据",
+        "禁止「看起来没问题」类模糊判定",
+        "所有 fail 精确对应 AC 编号",
+        "untested 项显式列出且未计入 pass"
+      ],
+      "failureStrategy": "环境不可用时记录「未验证」项，不默认通过",
+      "verdictValues": ["pass", "fail"],
+      "handoffTo": ["developer", "pm"]
+    }
+  ],
+  "collaborationRules": [
+    "角色之间只通过结构化产物交接，不依赖聊天上下文传递关键信息",
+    "架构师和 QA 默认只读；写操作集中在 Developer",
+    "QA 是强制关卡：Developer 声称完成不算完成，必须经 QA 独立验证并给出 verdict",
+    "每个角色在产出前先给出「将写入哪个文件 / 路径」的摘要，得到确认后再写"
+  ]
+}
