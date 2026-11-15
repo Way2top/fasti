@@ -224,6 +224,9 @@
         msg("完成：会话 " + counters.sessions_processed + " / 消息 " +
             counters.messages_processed + "；候选 " + counters.candidates_created +
             "（自动写 " + counters.auto_written + "，待审 " + counters.queued + "）");
+        if (data.run.watermark_rebuilt) {
+          msg("提示：检测到水位缺失/损坏，已从事实证据重建水位");
+        }
         refresh();
       })
       .catch(function (err) {
