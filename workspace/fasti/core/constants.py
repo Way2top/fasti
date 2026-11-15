@@ -83,3 +83,37 @@ ARTIFACT_PATHS = {
 
 # --- 默认模板类别（templates/categories.json 的加载形参；init 时转成事件） ----
 DEFAULT_TEMPLATE_ORDER = 1  # 仅占位：真实顺序见 templates/categories.json
+
+# ---------------------------------------------------------------- C-09 自动提取
+EXTRACT_CONFIG_SCHEMA_VERSION = 1
+EXTRACT_STATE_SCHEMA_VERSION = 1
+EXTRACT_CONSENT_VERSION = 1
+EXTRACT_CONSENT_TEXT = (
+    "提取会把会话内容与相关已有事实发送给你配置的外部 LLM 服务"
+    "（联网，内容离开本机；供应商保留策略由服务商决定）；可能产生费用；可随时关闭；"
+    "仅发送用户消息（A 段）与候选/相关已有事实（B 段），不发送助手/工具消息。"
+)
+EXTRACT_RECALL_FULL_BYTES = 8192          # 全库当前事实单行压缩总字节 <= 8KB ⇒ full
+EXTRACT_RECALL_TOP_K = 20                 # retrieval 每候选 top-K
+EXTRACT_RECALL_MAX_BYTES = 6144           # retrieval 召回字节预算
+EXTRACT_HISTORICAL_TOP_K = 10
+EXTRACT_HISTORICAL_MAX_BYTES = 2048
+EXTRACT_PER_MESSAGE_CHARS = 1500
+EXTRACT_CHUNK_CHARS = 4000
+EXTRACT_CHUNK_MESSAGES = 20
+EXTRACT_PROMPT_CHARS_MAX = 8192
+EXTRACT_AUTO_HIGH_CONFIDENCE = 0.85       # 抽取置信度自动写门槛
+EXTRACT_AUTO_RELATION_CONFIDENCE = 0.80   # 关系置信度自动写门槛
+EXTRACT_LOW_CONFIDENCE = 0.45             # 抽取低置信
+EXTRACT_LOW_RELATION = 0.50               # 关系低置信
+EXTRACT_CJK_BIGRAM_THRESHOLD = 0.45       # 中文保守检查
+EXTRACT_CJK_MIN_SHARED = 2
+EXTRACT_AUTO_WRITE_PER_RUN = 10
+EXTRACT_AUTO_WRITE_DAILY = 20
+EXTRACT_LLM_MAX_RESPONSE_BYTES = 2097152  # 2 MiB
+EXTRACT_LLM_CONNECT_TIMEOUT = 10
+EXTRACT_LLM_READ_TIMEOUT = 60
+EXTRACT_LLM_MAX_RETRIES = 2
+EXTRACT_MAX_MESSAGES_PER_RUN = 200
+EXTRACT_MAX_SESSIONS_PER_RUN = 10
+EXTRACT_AUTO_TRIGGER_MIN_INTERVAL = 60
