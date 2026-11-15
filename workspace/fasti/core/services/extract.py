@@ -267,7 +267,8 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
         "llm": {"model": cfg["llm"].get("model"),
                 "base_url_host": _base_url_host(cfg),
                 "latency_ms": int((time.time() - start_monotonic) * 1000),
-                "retries": 0, "calls": llm_calls},
+                "retries": 0, "calls": llm_calls,
+                "prompt_version": constants.EXTRACT_PROMPT_EXTRACTION},
         "watermark_rebuilt": bool(rebuilt),
         "sessions": sessions_summary,
         "errors": run_errors,
@@ -292,8 +293,10 @@ def _process_chunk(data_dir, model, cfg, chunk, run_id, dry_run, dedupe,
         + constants.EXTRACT_EXTRACT_TOKENS_PER_MESSAGE * len(chunk["messages"]))
     content = extract_llm.chat_completion(cfg, messages, max_tokens=extract_tokens)
     valid, dropped = extract_llm.validate_extraction_result(content)
-    counters["dropped_invalid"] = counters.get("dropped_invalid", 0) + dropped
-    counters["drop_reasons"]["invalid_candidate_structure"] += dropped
+    for reason, count in dropped.items():
+        counters["dropped_invalid"] = counters.get("dropped_invalid", 0) + count
+        counters["drop_reasons"] = counters.get("drop_reasons") or {}
+        counters["drop_reasons"][reason] = counters["drop_reasons"].get(reason, 0) + count
     chunk_ids = [message["message_id"] for message in chunk["messages"]]
     prepared = []
     for candidate in valid:
@@ -343,6 +346,9 @@ def _process_chunk(data_dir, model, cfg, chunk, run_id, dry_run, dedupe,
             "message_ordinals": [ordinals[item] for item in evidence_ids],
             "evidence_key": evidence_key,
             "change_type": "new",
+            "granularity": candidate["granularity"],
+            "subject": candidate.get("subject"),
+            "prompt_version": constants.EXTRACT_PROMPT_EXTRACTION,
         })
     if not prepared:
         return 0, None
@@ -385,7 +391,9 @@ def _process_chunk(data_dir, model, cfg, chunk, run_id, dry_run, dedupe,
                       "relation_confidence": relation["relation_confidence"],
                       "rationale": relation.get("rationale"),
                       "unverified": relation.get("unverified", False)},
-            system=system, target_fact_id=relation.get("target_fact_id"))
+            system=system, target_fact_id=relation.get("target_fact_id"),
+            granularity=item.get("granularity"), subject=item.get("subject"),
+            summary_subject_key=None, prompt_version=item.get("prompt_version"))
         counters["candidates_created"] += 1
         created += 1
         if decision["action"] == "auto_write" and not dry_run:

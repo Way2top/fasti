@@ -216,7 +216,9 @@ def _now():
 def new_candidate(candidate_id, session_id, message_ids, message_ordinals, chunk_id,
                   run_id, content, category_key, change_type, extraction_confidence,
                   recall, decision, evidence_key, relation=None, system=None,
-                  suggested_category_key=None, target_fact_id=None, status="pending"):
+                  suggested_category_key=None, target_fact_id=None, status="pending",
+                  granularity=None, subject=None, summary_subject_key=None,
+                  prompt_version=None):
     now = _now()
     return {
         "candidate_id": candidate_id,
@@ -230,6 +232,10 @@ def new_candidate(candidate_id, session_id, message_ids, message_ordinals, chunk
         "chunk_id": chunk_id,
         "run_id": run_id,
         "content": content,
+        "granularity": granularity,
+        "subject": subject,
+        "summary_subject_key": summary_subject_key,
+        "prompt_version": prompt_version,
         "suggested_category_key": suggested_category_key,
         "category_key": category_key,
         "change_type": change_type,

@@ -19,14 +19,34 @@ from . import errors
 from . import extract_privacy
 
 SYSTEM_EXTRACT = (
-    "你是「个人事实抽取器」。从给定的用户消息片段中抽取值得长期记住的个人事实。"
-    "只抽取能由这些用户消息直接支撑的事实；忽略助手/工具内容（不会提供）。"
-    "每条事实映射到给定类别之一。不要判断与任何已有数据的关系（你没有数据库访问权）。"
-    "输出严格 JSON：{\"candidates\":[{\"content\":\"单行事实\",\"category_key\":\"类别 key\","
-    "\"time_hint\":null或时间线索字符串,\"extraction_confidence\":0..1,"
-    "\"evidence\":{\"message_ids\":[\"消息 id\"]},\"reason\":\"≤200 字\"}],\"notes\":\"\"}。"
-    "没有可抽取事实时输出 {\"candidates\":[],\"notes\":\"\"}。content 必须单行、≤2000 字。"
+    "你是「个人事实抽取器」。从给定的用户消息片段中抽取值得长期记住的个人画像事实"
+    "（用户是谁/偏好/经历/目标/当前状态/基本背景）。只抽取能由这些用户消息直接支撑的事实；"
+    "忽略助手/工具内容（不会提供）；映射到末尾类别清单中的 category_key；"
+    "不要判断与任何已有数据的关系（你没有数据库访问权）。\n\n"
+    "【禁止抽取的六类噪音（noise）】\n"
+    "1) 项目/工作进度流水（如「完成了第 N 步」「某某交付了 v1.8」）；\n"
+    "2) 子 agent / 任务执行细节（角色就绪确认、任务分配、角色契约讨论）；\n"
+    "3) 工具报错与排障细节（如「pnpm 版本不匹配」「代理慢」）；\n"
+    "4) 代码/文件/架构具体细节（函数名、文件路径、DDL、ADR 编号）；\n"
+    "5) 对话过程性状态（如「用户尚不清楚」「暂时无法验证」「计划晚点做」）；\n"
+    "6) 临时计划、TODO、待办。\n\n"
+    "【粒度规则 granularity】\n"
+    "- 项目/工作类：必须 granularity=\"summary\"，subject 必填（项目标识，如 fasti / "
+    "个人记忆系统）；写成「当前状态总结」，同一项目在同一会话中只产出 1 条 summary。\n"
+    "- 个人信息类（偏好/经历/目标/状态）：granularity=\"atomic\"，subject 可空；可多条。\n"
+    "正例：{\"granularity\":\"summary\",\"subject\":\"fasti\",\"content\":"
+    "\"在做一个 AI memory 方向的开源项目（Fasti），已完成自动提取，正在验证价值\"}\n"
+    "反例（不要拆成多条）：\"架构师交付了 v1.8\" / \"项目采用四角色流程\" / "
+    "\"项目采用 pnpm 工作流\" —— 这些是 noise。\n\n"
+    "输出严格 JSON：{\"candidates\":[{\"content\":\"单行事实\","
+    "\"category_key\":\"类别 key\",\"granularity\":\"summary|atomic\","
+    "\"subject\":null或≤80字项目标识,\"time_hint\":null或时间线索字符串,"
+    "\"extraction_confidence\":0..1,"
+    "\"evidence\":{\"message_ids\":[\"消息 id\"]},\"reason\":\"≤200 字\"}],"
+    "\"notes\":\"\"}。没有可抽取事实时输出 {\"candidates\":[],\"notes\":\"\"}。"
+    "content 必须单行、≤2000 字；类别清单见系统提示末尾（输出必须使用其中 key）。"
 )
+
 SYSTEM_JUDGE = (
     "你是「记忆关系判定器」。输入：候选事实列表 + 每条候选的召回事实（一行一条，"
     "可能含 current/historical 标记与类别 key）。判断每个候选与召回事实的关系："
@@ -282,9 +302,10 @@ def build_judgment_messages(candidates, recall_by_candidate, sensitive_filter=Tr
 
 # ---------------------------------------------------------------- 输出校验
 def validate_extraction_result(raw):
-    """→ (候选列表, 被丢弃单条计数)；顶层结构非法 ⇒ EXTRACT_LLM_INVALID_RESPONSE。
+    """→ (候选列表, 丢弃计数 dict)；顶层结构非法 ⇒ EXTRACT_LLM_INVALID_RESPONSE。
 
-    单条候选结构/枚举/范围非法 ⇒ 丢弃该条（计数），不影响整批。
+    丢弃原因：invalid_candidate_structure / invalid_granularity / missing_subject；
+    单条非法只丢弃该条，不影响整批。
     """
     try:
         data = parse_json_object(raw)
@@ -295,14 +316,18 @@ def validate_extraction_result(raw):
         raise errors.make("EXTRACT_LLM_INVALID_RESPONSE",
                           "抽取结果缺少 candidates 数组，整批拒绝、水位不前进")
     valid = []
-    dropped = 0
+    dropped = {"invalid_candidate_structure": 0, "invalid_granularity": 0,
+               "missing_subject": 0}
     for item in data["candidates"]:
-        if not _valid_candidate(item):
-            dropped += 1
+        reason = _candidate_invalid_reason(item)
+        if reason:
+            dropped[reason] += 1
             continue
         valid.append({
             "content": item["content"],
             "category_key": item["category_key"],
+            "granularity": item["granularity"],
+            "subject": item.get("subject") or None,
             "time_hint": item.get("time_hint"),
             "extraction_confidence": float(item["extraction_confidence"]),
             "evidence": {"message_ids": list(item["evidence"]["message_ids"])},
@@ -311,33 +336,46 @@ def validate_extraction_result(raw):
     return valid, dropped
 
 
-def _valid_candidate(item):
+def _candidate_invalid_reason(item):
+    """→ 丢弃原因码；None 表示合法。granularity 与 summary.subject 单独归类。"""
     if not isinstance(item, dict):
-        return False
+        return "invalid_candidate_structure"
     content = item.get("content")
     if not isinstance(content, str) or not 1 <= len(content) <= 2000 or "\n" in content:
-        return False
-    category_key = item.get("category_key")
-    if not isinstance(category_key, str):
-        return False
+        return "invalid_candidate_structure"
+    if not isinstance(item.get("category_key"), str):
+        return "invalid_candidate_structure"
     try:
         confidence = float(item.get("extraction_confidence"))
     except (TypeError, ValueError):
-        return False
+        return "invalid_candidate_structure"
     if not 0 <= confidence <= 1:
-        return False
+        return "invalid_candidate_structure"
     evidence = item.get("evidence")
     if not isinstance(evidence, dict):
-        return False
+        return "invalid_candidate_structure"
     message_ids = evidence.get("message_ids")
     if not isinstance(message_ids, list) or not message_ids \
-            or not all(isinstance(item, str) and item for item in message_ids):
-        return False
+            or not all(isinstance(value, str) and value for value in message_ids):
+        return "invalid_candidate_structure"
     if item.get("time_hint") is not None and not isinstance(item["time_hint"], str):
-        return False
+        return "invalid_candidate_structure"
     if item.get("reason") is not None and not isinstance(item["reason"], str):
-        return False
-    return True
+        return "invalid_candidate_structure"
+    granularity = item.get("granularity")
+    if granularity is None:
+        # 向后兼容：旧 mock/旧候选无字段时按 atomic 处理（真实 prompt 已要求必填）
+        item["granularity"] = "atomic"
+        return None
+    if granularity not in ("summary", "atomic"):
+        return "invalid_granularity"
+    subject = item.get("subject")
+    if granularity == "summary":
+        if not isinstance(subject, str) or not subject.strip() or len(subject) > 80:
+            return "missing_subject"
+    elif subject is not None and (not isinstance(subject, str) or len(subject) > 80):
+        return "invalid_candidate_structure"
+    return None
 
 
 def validate_judgment_result(raw, candidate_ids, recall_ids_by_candidate):

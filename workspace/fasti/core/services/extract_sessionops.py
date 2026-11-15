@@ -14,6 +14,7 @@ def _empty_counters():
             "queued": 0, "duplicates": 0, "sensitive_skipped": 0, "errors": 0,
             "dropped_invalid": 0,
             "drop_reasons": {"invalid_candidate_structure": 0,
+                             "invalid_granularity": 0, "missing_subject": 0,
                              "invalid_category_key": 0, "invalid_evidence": 0}}
 
 
