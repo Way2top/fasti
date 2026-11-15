@@ -28,6 +28,7 @@
       "recorded_at",
       "latest_change",
       "revision_count",
+      "extraction",
       "deleted_at"
     ],
     "StatusReport": [

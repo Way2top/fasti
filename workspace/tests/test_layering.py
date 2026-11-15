@@ -47,7 +47,7 @@ class TestLayeringAndImports(unittest.TestCase):
 
     def test_imports_are_stdlib_or_local(self):
         allowed = set(getattr(sys, "stdlib_module_names", set()))
-        allowed.update({"fasti"})
+        allowed.update({"fasti", "compression"})  # compression.zstd：Python 3.14 标准库，代码内 try/except 探测
         violations = []
         for path in iter_package_py_files():
             with open(path, encoding="utf-8") as handle:
