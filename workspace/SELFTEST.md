@@ -87,8 +87,8 @@
 | ST-48 | AC-13-1~13-5（防呆） | `node --check fasti/adapters/web_static/app.js` + 断言 IIFE 首尾行 | 修复 R-F1 后 **exit 0**（修复前 `SyntaxError: Unexpected token '}'`，exit 1）；断言首行 `(function () {`、次行 `"use strict";`、倒数第二行 `})();` | ✅ |
 | ST-49 | 静态资源完整性（防呆） | 检查 `web_static/` 三文件存在/非空/单末尾 LF、`index.html` 仅同源引用、零外部 URL、与基线内联内容 sha256 一致 | 全部通过；`app.js` 内容 sha256 `0fb916a6…`、`style.css` 内容 sha256 `d6e0c406…` 与 `git show refactor-baseline:…/index.html` 的内联内容**逐字节相同** | ✅ |
 
-**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **173 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
-自动化测试：`Ran 173 tests … OK`（见 §4.1 与 §13）。
+**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **178 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
+自动化测试：`Ran 178 tests … OK`（见 §4.1 与 §13）。
 > 注：下表 ST-01~ST-47 中出现的 `fact-0001` / `line-0001` / `cat-0002` 为 **v1（序号方案）历史记录**；C-06 迁移后同一行为以 UUIDv7 + 短前缀复现，见 §9。
 
 ---
@@ -99,9 +99,9 @@
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests -v
-…（173 个用例，全 ok）
+…（178 个用例，全 ok）
 ----------------------------------------------------------------------
-Ran 173 tests in 2.857s
+Ran 178 tests in 3.938s
 
 OK
 ```
@@ -308,7 +308,7 @@ python3 -V                     # 期望 3.9+（实测 3.13.3）
 python3 -c "import sqlite3; print(sqlite3.sqlite_version)"   # 期望 >= 3.38（需 JSON1）
 ```
 
-### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，173 用例）
+### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，178 用例）
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -685,7 +685,11 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 | 24 | `24506ea` | C-09 M5：两段式运行时 + 决策矩阵 + 自动写入 + 事件 v4 审计（12） |
 | 25 | `2a79213` | C-09 M6：CLI 9 命令 + web 端点 + 审核 UI/静态资源（6） |
 | 26 | `fc2b758` | C-09 M7：v3→v4 纯加性迁移测试（5） |
-| 27 | 本文件 commit | README / SELFTEST 同步（§13 C-09 证据与未覆盖项） |
+| 27 | `e426682` | README / SELFTEST 同步（§13 C-09 证据与未覆盖项） |
+| 28 | `f541ffb` | QA 修复：迁移指引动态生成并覆盖 v1/v2/v3→v4（FAIL-09-K）+ verify schema_version 动态 |
+| 29 | `dc12ae1` | QA 修复：候选详情召回明细/原因码/目标事实 + 水位重建提示（AC-16-2/11/17/9） |
+| 30 | `4bfbc58` | QA 修复：页面自动触发（节流）+ 队列证据/冲突标记 + 编辑后通过（AC-16-1/17-1/17-5） |
+| 31 | 本文件 commit | SELFTEST 记录 QA 复验修复与实测输出 |
 | 8 | 本文件 commit | README / SELFTEST 同步（§9.9 前端字段契约修复证据；用例 75） |
 
 ### 9.3 自动化测试（76 用例时点记录；C-07 后为 93 用例，见 §10）
@@ -1441,7 +1445,7 @@ README 与 manifest 版本一致: True
 | M6 | `2a79213` | CLI 9 命令、web `/api/extract/*` 9 端点、`web_static/extract.js` 审核 UI + 静态白名单 4 条 |
 | M7 | `fc2b758` | v3→v4 纯加性迁移测试（dry-run/幂等/旧格式拒绝/派生文本 sha256 不变） |
 
-测试 **116 → 173**（新增 57 条）：M1 12 / M2 8 / M3 9 / M4 5 / M5 12 / M6 6 / M7 5。
+测试 **116 → 178**（新增 62 条；含 QA 展示层修复 5 条）：M1 12 / M2 8 / M3 9 / M4 5 / M5 12 / M6 6 / M7 5。
 
 ### 13.2 关键边界实测（mock LLM，无外部调用）
 
@@ -1468,7 +1472,7 @@ README 与 manifest 版本一致: True
 
 ```
 $ python3 -m unittest discover -s tests
-Ran 173 tests in 2.857s
+Ran 178 tests in 3.938s
 OK
 $ python3 run.py --data-dir <tmp> extract status     # 关闭/同意/配置/待审/水位
 $ python3 run.py --data-dir <tmp> extract config --base-url ... --model ...
@@ -1489,7 +1493,47 @@ $ python3 run.py verify --deep                       # 7/7 PASS（既有 P0 检�
 | 28 条 AC 的逐条 QA 独立复测 | QA 门禁职责 | 本文件按 AC 矩阵提供入口（§15.11/§15.13）；等待 QA 独立验证 |
 | 迁移 v2→v3→v4 联跑 | 既有 C-07 测试已链式覆盖 | `test_migrate_v2_to_v3` 已更新为 v2→v3→v4 链 |
 
-### 13.5 交付声明
+### 13.5 QA 复验修复（2026-11-15，6 AC + FAIL-09-K）
+
+- **AC-16-1**：`extract.js` 页面加载时若 enabled+auto_trigger_on_open+consent+配置有效 ⇒
+  `POST /api/extract/run {trigger:"web_open"}`；localStorage 按
+  `auto_trigger_min_interval_seconds`（默认 60s）节流；失败仅提示、不阻塞页面。
+- **AC-16-2 / 16-11 / 16-17**：`api.show_extract_candidate` 新增 `recall_details`
+  （fact 短ID/类别/内容/current|historical/是否关闭类别/原因码）与 `target_fact`
+  （update/conflict 目标内容）；CLI `extract show` 与网页「详情」均展示。
+- **AC-16-9**：`extract run` 的 stdout 在 `watermark_rebuilt=true` 时明确提示
+  「已从事实证据重建水位」；网页自动/手动运行提示同源显示。
+- **AC-17-1**：待审队列渲染来源证据（session_id / message_ids）与冲突标记（更新/冲突/系统相似）。
+- **AC-17-5（网页编辑后通过）**：新增「编辑后通过」按钮：prompt 内容/生效时间；更新类显式
+  evolve|correct；走 approve 并保留 original/final 审计。
+- **FAIL-09-K**：迁移指引全部动态生成（`constants.MIGRATION_GUIDE` + 脚本常量），
+  v1/v2/v3 历史版本均给指引；`verify` 成功文案 schema_version 取 `constants.SCHEMA_VERSION`。
+
+实测（CLI）：
+```
+$ fasti extract show cand-…
+召回事实明细（mode=full，corpus=40B，truncated=False）：
+  - 018bcfe67970 | tech | current | 主力语言：Python | 原因：tier1,same_category
+目标事实（update/conflict）：018bcfe67970 | tech | 主力语言：Python
+来源：session=sess-cli message_ids=['m1'] ordinals=[1]
+$ fasti extract   # watermark_rebuilt=true 时
+提示：检测到水位缺失/损坏，已从事实证据重建水位（watermark_rebuilt=true）
+```
+实测（网页）：`GET /api/extract/candidates/{id}` 返回含 `recall_details`/`target_fact`/
+`evidence_preview`；`extract.js` 静态断言 auto_trigger/web_open/节流键/recall_details/
+reasons/message_ids/冲突标记/watermark_rebuilt/编辑后通过 均在；“立即提取”/自动触发共用同一
+run 端点，失败提示不阻塞其它面板。
+
+迁移指引前后对比：
+```
+修复前：数据目录是旧格式（format_version=3，当前支持 4）：…迁移到 v3
+        （运行 scripts/migrate_v2_to_v3.py）后重试
+修复后：数据目录是旧格式（format_version=3，当前支持 4）：…请先备份数据目录，再按迁移指引处理：
+        历史版本迁移：v1→v2 见 architecture.md §12.5；v2→v3 运行 scripts/migrate_v2_to_v3.py；
+        v3→v4 运行 scripts/migrate_v3_to_v4.py；迁移后重试（当前支持 format_version=4）
+```
+
+### 13.6 交付声明
 
 - 全部实现位于 `workspace/`；`artifacts/`、`briefs/` 未修改；**format 4 / schema 4 / contract 2.0.0**。
 - **未触碰用户 `~/.fasti`**；真实数据迁移（v3→v4）由 Lead/用户执行 `scripts/migrate_v3_to_v4.py`（先备份 + dry-run）。
