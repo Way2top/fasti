@@ -144,7 +144,12 @@ jobs:
           D="$RUNNER_TEMP/determinism"
           python3 run.py --data-dir "$D" init
           python3 run.py --data-dir "$D" fact add --category tech --content "x" --valid-from 2025-01
-          A=$(sha256sum "$D/profile/current.md" | cut -d' ' -f1)
           python3 run.py --data-dir "$D" recompute
-          B=$(sha256sum "$D/profile/current.md" | cut -d' ' -f1)
-          test "$A" = "$B" && echo "✅ 确定性一致"
+          python3 run.py --data-dir "$D" render
+          A=$(sha256sum "$D/profile/current.md" "$D/profile/history.md" "$D/dist/AGENTS.md" | sha256sum | cut -d' ' -f1)
+          rm -rf "$D/profile" "$D/dist" "$D/state/manifest.json"
+          python3 run.py --data-dir "$D" recompute
+          python3 run.py --data-dir "$D" render
+          B=$(sha256sum "$D/profile/current.md" "$D/profile/history.md" "$D/dist/AGENTS.md" | sha256sum | cut -d' ' -f1)
+          test "$A" = "$B"
+          echo "✅ 确定性一致（删掉派生文件后逐字节还原）：$A"
