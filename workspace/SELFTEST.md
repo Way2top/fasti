@@ -87,8 +87,8 @@
 | ST-48 | AC-13-1~13-5（防呆） | `node --check fasti/adapters/web_static/app.js` + 断言 IIFE 首尾行 | 修复 R-F1 后 **exit 0**（修复前 `SyntaxError: Unexpected token '}'`，exit 1）；断言首行 `(function () {`、次行 `"use strict";`、倒数第二行 `})();` | ✅ |
 | ST-49 | 静态资源完整性（防呆） | 检查 `web_static/` 三文件存在/非空/单末尾 LF、`index.html` 仅同源引用、零外部 URL、与基线内联内容 sha256 一致 | 全部通过；`app.js` 内容 sha256 `0fb916a6…`、`style.css` 内容 sha256 `d6e0c406…` 与 `git show refactor-baseline:…/index.html` 的内联内容**逐字节相同** | ✅ |
 
-**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **197 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
-自动化测试：`Ran 197 tests … OK`（见 §4.1 与 §13）。
+**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **204 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
+自动化测试：`Ran 204 tests … OK`（见 §4.1 与 §13）。
 > 注：下表 ST-01~ST-47 中出现的 `fact-0001` / `line-0001` / `cat-0002` 为 **v1（序号方案）历史记录**；C-06 迁移后同一行为以 UUIDv7 + 短前缀复现，见 §9。
 
 ---
@@ -99,9 +99,9 @@
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests -v
-…（197 个用例，全 ok）
+…（204 个用例，全 ok）
 ----------------------------------------------------------------------
-Ran 197 tests in 3.998s
+Ran 204 tests in 4.021s
 
 OK
 ```
@@ -308,7 +308,7 @@ python3 -V                     # 期望 3.9+（实测 3.13.3）
 python3 -c "import sqlite3; print(sqlite3.sqlite_version)"   # 期望 >= 3.38（需 JSON1）
 ```
 
-### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，197 用例）
+### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，204 用例）
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -695,7 +695,8 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 | 34 | **`f24bbe6`** | **真实 LLM 判定段截断修复**：动态 max_tokens（400+300×消息/候选，封顶 3000/4000）、`finish_reason=length` ⇒ `EXTRACT_LLM_TRUNCATED`、JSON 容错解析（181→185） |
 | 35 | `e1ae01e` | SELFTEST 记录真实 API 连续 5 次稳定证据 |
 | 36 | `976b30d` | C-10 M1 | **第 0 层会话分流**：session/title → divert_input（provider 标题优先、首条消息兜底、200/300 截断）、`extract_divert.py`（c10-divert-v1，严格 JSON）、运行接入（skip 推进水位/失败不推进且不中断、逐会话记录）；185→194 |
-| 37 | **`3befae1`（C-10 M2）** | **抽取 prompt 收紧 c10-extract-v2**：noise 六类/粒度规则/正反例、granularity+subject 校验与丢弃原因、候选 granularity/subject/prompt_version、runs.llm.prompt_version；194→197 |
+| 37 | `3befae1`（C-10 M2） | **抽取 prompt 收紧 c10-extract-v2**：noise 六类/粒度规则/正反例、granularity+subject 校验与丢弃原因、候选 granularity/subject/prompt_version、runs.llm.prompt_version；194→197 |
+| 38 | **`c1f2db4`（C-10 M3）** | **会话级两阶段**：buffer/summary 去重/确定性排序/5 条上限；`c10-divert-v2`（项目进展算 extract）；197→204 |
 | 8 | 本文件 commit | README / SELFTEST 同步（§9.9 前端字段契约修复证据；用例 75） |
 
 ### 9.3 自动化测试（76 用例时点记录；C-07 后为 93 用例，见 §10）
@@ -1478,7 +1479,7 @@ README 与 manifest 版本一致: True
 
 ```
 $ python3 -m unittest discover -s tests
-Ran 197 tests in 3.998s
+Ran 204 tests in 4.021s
 OK
 $ python3 run.py --data-dir <tmp> extract status     # 关闭/同意/配置/待审/水位
 $ python3 run.py --data-dir <tmp> extract config --base-url ... --model ...
@@ -1680,3 +1681,33 @@ $ python3 run.py --data-dir /tmp/fasti-realtest extract
   `test_extract_granularity.py` 以保持 ≤500 行。
 - **未做**：会话级 buffer/去重/5 条上限（M3）、config schema2（M4）、state schema2 迁移（M4）、
   前端去自动触发（M5）；真实 LLM prompt 冒烟未在本里程碑执行（M2 用 mock；真实回归在后续）。
+
+### 13.11 C-10 M3：会话级两阶段 + 分流 v2（已交付，等待验证）
+
+> 范围仅 M3；config schema2、state schema2 正式迁移、前端去自动触发属后续里程碑（M4/M5）。
+
+- **会话级 buffer**：分流通过 → 全部分块抽取（不写库/不判定）→ summary 按
+  `summary_subject_key`（NFKC 小写去空白标点）去重、每组保留 extraction_confidence 最高
+  （同分按最早 ordinal/content/chunk_id 确定性）→ 排序（summary 优先 → 置信度降序 →
+  content 字典序 → ordinal → chunk_id）→ 截断 5 条（summary+atomic 都计入，跨块累计）→
+  仅保留项进入既有召回/判定/决策；自动写入与审核行为不变。
+- **可诊断**：`sessions[].candidates_extracted / candidates_after_dedup / candidates_kept /
+  dropped_duplicate_summary / dropped_by_session_cap`；顶层 counters 汇总。
+- **分流 v2（真实 bug 修复）**：`c10-divert-v2` 明确「用户正在做/关注的事项，包括项目与工作
+  进展」⇒ extract（产出 1 条 summary）；纯排障/命令查询/代码审查/角色确认 ⇒ skip；
+  prompt 含正反例（pnpm 报错 skip vs Fasti 项目进展 extract）。
+- **跨 3 块 >5 实测（mock 集成）**：45 条消息 → 3 块 × 3 候选 = 9；
+  `candidates_extracted=9`、`candidates_after_dedup=7`（2 条重复 summary）、
+  `candidates_kept=5`、`dropped_duplicate_summary=2`、`dropped_by_session_cap=2`；
+  实际入队 5 条；sessions[] 同值。
+- **确定性**：同一 buffer 正序/逆序各跑一次 postprocess → 保留内容序列与计数完全一致。
+- **真实 DeepSeek API 验证（临时 store + 伪造 v4 会话；未触碰 ~/.fasti）**：
+  - 项目进展会话 → `decision=extract`（reason：用户陈述在做 Fasti 项目、P0 完成、正在验证价值，
+    属项目进展），产出 **1 条** 候选：`granularity=summary, subject=fasti, category=projects`，
+    内容「正在做 Fasti 项目，P0 已完成，当前在验证自动提取的价值」，进入 review（auto_write=false）；
+  - 纯排障会话 → `decision=skip`，reason「纯 pnpm 构建报错排障，仅询问版本不匹配如何修复，
+    无任何用户身份、偏好或项目进展信息」，候选 0 条。
+- **测试（197→204，新增 7）**：跨 3 块 9 候选截断计数；summary 去重保留最高置信；summary+atomic
+  都计入；确定性选择；单块 ≤5 不误伤；分流 v2 prompt 规则断言；mock「项目进展⇒extract 1 summary /
+  纯排障⇒skip」。
+- **未做**：config schema2（M4）、state schema2 正式迁移（M4）、前端去自动触发（M5）。
