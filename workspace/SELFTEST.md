@@ -87,8 +87,8 @@
 | ST-48 | AC-13-1~13-5（防呆） | `node --check fasti/adapters/web_static/app.js` + 断言 IIFE 首尾行 | 修复 R-F1 后 **exit 0**（修复前 `SyntaxError: Unexpected token '}'`，exit 1）；断言首行 `(function () {`、次行 `"use strict";`、倒数第二行 `})();` | ✅ |
 | ST-49 | 静态资源完整性（防呆） | 检查 `web_static/` 三文件存在/非空/单末尾 LF、`index.html` 仅同源引用、零外部 URL、与基线内联内容 sha256 一致 | 全部通过；`app.js` 内容 sha256 `0fb916a6…`、`style.css` 内容 sha256 `d6e0c406…` 与 `git show refactor-baseline:…/index.html` 的内联内容**逐字节相同** | ✅ |
 
-**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **217 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
-自动化测试：`Ran 217 tests … OK`（见 §4.1 与 §13）。
+**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **218 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
+自动化测试：`Ran 218 tests … OK`（见 §4.1 与 §13）。
 > 注：下表 ST-01~ST-47 中出现的 `fact-0001` / `line-0001` / `cat-0002` 为 **v1（序号方案）历史记录**；C-06 迁移后同一行为以 UUIDv7 + 短前缀复现，见 §9。
 
 ---
@@ -99,9 +99,9 @@
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests -v
-…（217 个用例，全 ok）
+…（218 个用例，全 ok）
 ----------------------------------------------------------------------
-Ran 217 tests in 5.228s
+Ran 218 tests in 7.451s
 
 OK
 ```
@@ -308,7 +308,7 @@ python3 -V                     # 期望 3.9+（实测 3.13.3）
 python3 -c "import sqlite3; print(sqlite3.sqlite_version)"   # 期望 >= 3.38（需 JSON1）
 ```
 
-### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，217 用例）
+### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，218 用例）
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -1481,7 +1481,7 @@ README 与 manifest 版本一致: True
 
 ```
 $ python3 -m unittest discover -s tests
-Ran 217 tests in 5.228s
+Ran 218 tests in 7.451s
 OK
 $ python3 run.py --data-dir <tmp> extract status     # 关闭/同意/配置/待审/水位
 $ python3 run.py --data-dir <tmp> extract config --base-url ... --model ...
@@ -1768,3 +1768,29 @@ $ python3 run.py --data-dir /tmp/fasti-realtest extract
   动态页面加载（/、extract.js、app.js、status、candidates、runs）mock LLM 零请求、水位不变、
   无候选；manual run 正常调用 LLM；web_open 被 400 拒绝且零 LLM 调用。
 - **未覆盖**：无（M5 范围内）；整体 C-10 待 QA 全量验收。
+
+### 13.14 C-10 QA fail 修复（AC-19-7 token 预算 / AC-16-2 粒度展示）
+
+- **token 常量（最终）**：
+  | 段 | 公式 | 封顶 | 示例 |
+  |---|---|---|---|
+  | 抽取 | 1500 + 600×消息数 | 6000 | 1 条=2100，5 条=4500，8+ 条=6000 |
+  | 判定 | 600 + 400×候选数 | 5000 | 5 条=2600 |
+  | 分流 | 固定 500 | — | 已足够（真实无截断） |
+- **真实 20 根会话完整 run（分流+抽取+判定；临时 store；只读会话副本）**：
+  ```
+  status=ok
+  sessions_seen=38（23 个根会话，其中 20 个有真实用户消息）
+  entered_extraction=3 | divert_skip=17 | divert_failed=0
+  messages_processed=74 | candidates_created=7 | errors=0
+  EXTRACT_LLM_TRUNCATED：无
+  ```
+- **粒度展示（真实候选）**：
+  ```
+  CLI summary：粒度：summary（subject=Fasti）
+  CLI atomic ：粒度：atomic
+  旧候选（无字段）：粒度：未知（不报错）
+  网页详情：granularity=summary | subject=Fasti | prompt_version=c10-extract-v2
+  ```
+- **测试（217→218）**：动态 token 公式（3 消息/3 候选 ⇒ 3300/1800）；CLI show 旧候选「未知」
+  + summary subject；网页详情静态含「粒度」；候选详情 API 断言 granularity。
