@@ -66,7 +66,7 @@ fasti --help
 | 第三方包 | **无**。不 `pip install` 任何依赖；全程无网络调用 |
 | 文件锁 | `flock`（macOS/Linux）；NFS 等不支持 `flock` 的文件系统不保证（ADR-015） |
 
-依赖自检：`python3 -m unittest discover -s tests -v`（**115 个用例**：C-08 相似检测（两级规则/真实重复对/令牌绑定/审计）+ v3 时间语义、UUIDv7/短前缀/格式门/类别复活/持久化守卫 + 写路径原子性 + 前端字段契约 + v2→v3 迁移强回归 + 分层/确定性/导出导入/CLI/网页/静态资源守卫，含「禁止 import UI 模块 / 禁止 print / 禁止第三方依赖」的分层断言）。
+依赖自检：`python3 -m unittest discover -s tests -v`（**116 个用例**：C-08 相似检测（两级规则/真实重复对/令牌绑定/审计）+ v3 时间语义、UUIDv7/短前缀/格式门/类别复活/持久化守卫 + 写路径原子性 + 前端字段契约 + v2→v3 迁移强回归 + 分层/确定性/导出导入/CLI/网页/静态资源守卫，含「禁止 import UI 模块 / 禁止 print / 禁止第三方依赖」的分层断言）。
 
 ---
 
@@ -114,7 +114,7 @@ workspace/
 │       ├── web.py                  # 本机网页表单后端（127.0.0.1 + 令牌 + Origin/Host 校验）
 │       ├── static_files.py         # 同源静态资源白名单（3 条只读路由）
 │       └── web_static/             # index.html + style.css + app.js（零外部请求）
-├── tests/                          # _base.py + 18 个 test_*.py + fixtures/*.json（115 个用例）
+├── tests/                          # _base.py + 18 个 test_*.py + fixtures/*.json（116 个用例）
 └── scripts/                        # 一次性迁移工具（stdlib、离线，不随产品命令暴露）
     └── migrate_v2_to_v3.py         # v2→v3 事件改写器（--dry-run/原子写回/幂等）
 ```
@@ -187,7 +187,7 @@ python3 run.py web --port 0 --no-browser # 端口被占用时用 0 让系统分�
 ```
 
 - 只绑 `127.0.0.1`；每次启动生成一次性会话令牌（URL `?t=` → 请求头 `X-Fasti-Token`），并校验回环 `Host` / `Origin`，防浏览器 CSRF / DNS rebinding。不做用户鉴权（单机单用户，OS 账户即边界）。
-- 页面 = `web_static/index.html` + 同源 `style.css` / `app.js`（`static_files.py` 白名单静态路由）；**零外部请求**（无 CDN/远程字体/遥测），断网可用。页面需要一次性令牌，`/style.css` 与 `/app.js` 为只读同源资源。测试对 `app.js` 执行 `node --check` 语法校验、并与基线内联内容做字节 pin（`app.js` 内容 sha256 `0fb916a6…`）。
+- 页面 = `web_static/index.html` + 同源 `style.css` / `app.js`（`static_files.py` 白名单静态路由）；**零外部请求**（无 CDN/远程字体/遥测），断网可用。页面需要一次性令牌，`/style.css` 与 `/app.js` 为只读同源资源。测试对 `app.js` 执行 `node --check` 语法校验、结构与字段契约守卫（不再做字节级基线 pin：重构后由结构性断言替代）。
 - 同页完成：新增事实、修订（必选「演进/纠正」）、查看当前画像（核心层渲染的文本原样展示，前端不重排）、查看历史、时点回溯、类别管理、重算/渲染。
 - 页面不缓存画像；任何写操作都经核心层的领域校验与单写锁。类别路径参数使用 `category_key`（无 `category_id`）；`fact_id` 入参同样支持唯一短前缀。
 
@@ -325,7 +325,7 @@ python3 run.py fact add --category tech --content "主力语言是C++" --valid-f
 ## 10. 验证方式
 
 ```bash
-# A. 自动化自测（115 个用例；含 C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约 + 分层/确定性/导出导入/CLI/网页/静态资源）
+# A. 自动化自测（116 个用例；含 C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约 + 分层/确定性/导出导入/CLI/网页/静态资源）
 python3 -m unittest discover -s tests -v
 
 # B. 端到端自检（存储不变量 + 内存 SQLite 约束 + 确定性 + 三产物一致 + 导出导入往返）

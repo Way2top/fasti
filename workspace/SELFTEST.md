@@ -1,7 +1,7 @@
 # Fasti · P0 自测记录（SELFTEST）
 
-> 角色：开发工程师（developer） · 日期：2026-11-09
-> 依据：`artifacts/architecture.md` v1.1 / `artifacts/api-spec.yaml` v1.1 / `artifacts/database-schema.sql` v1 / `artifacts/product-spec.md` v3.0
+> 角色：开发工程师（developer） · 日期：2026-11-09（初版）；2026-11-15 文档/死代码清理
+> 依据：`artifacts/architecture.md` **v1.7.1**（27 ADR）/ `artifacts/api-spec.yaml` **contract_version 1.4.0** / `artifacts/database-schema.sql` **schema_version 3** / `artifacts/product-spec.md` **v4.0**（15 US / 74 AC）
 > 性质：**以下全部命令均已实际执行**，输出为实测粘贴（仅隐去临时路径中的随机后缀、个别时间戳随执行时间变化）。
 
 ---
@@ -87,8 +87,8 @@
 | ST-48 | AC-13-1~13-5（防呆） | `node --check fasti/adapters/web_static/app.js` + 断言 IIFE 首尾行 | 修复 R-F1 后 **exit 0**（修复前 `SyntaxError: Unexpected token '}'`，exit 1）；断言首行 `(function () {`、次行 `"use strict";`、倒数第二行 `})();` | ✅ |
 | ST-49 | 静态资源完整性（防呆） | 检查 `web_static/` 三文件存在/非空/单末尾 LF、`index.html` 仅同源引用、零外部 URL、与基线内联内容 sha256 一致 | 全部通过；`app.js` 内容 sha256 `0fb916a6…`、`style.css` 内容 sha256 `d6e0c406…` 与 `git show refactor-baseline:…/index.html` 的内联内容**逐字节相同** | ✅ |
 
-**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **115 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
-自动化测试：`Ran 115 tests … OK`（见 §4.1 与 §11）。
+**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **116 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
+自动化测试：`Ran 116 tests … OK`（见 §4.1 与 §12）。
 > 注：下表 ST-01~ST-47 中出现的 `fact-0001` / `line-0001` / `cat-0002` 为 **v1（序号方案）历史记录**；C-06 迁移后同一行为以 UUIDv7 + 短前缀复现，见 §9。
 
 ---
@@ -99,9 +99,9 @@
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests -v
-…（115 个用例，全 ok）
+…（116 个用例，全 ok）
 ----------------------------------------------------------------------
-Ran 115 tests in 1.257s
+Ran 116 tests in 1.472s
 
 OK
 ```
@@ -308,11 +308,11 @@ python3 -V                     # 期望 3.9+（实测 3.13.3）
 python3 -c "import sqlite3; print(sqlite3.sqlite_version)"   # 期望 >= 3.38（需 JSON1）
 ```
 
-### 4.1 一键自动化（覆盖 C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + v2 标识/短前缀/格式门/类别复活/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，115 用例）
+### 4.1 一键自动化（覆盖 C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + v2 标识/短前缀/格式门/类别复活/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，116 用例）
 
 ```bash
 python3 -m unittest discover -s tests -v
-# 期望最后三行：Ran 115 tests in … / OK
+# 期望最后三行：Ran 116 tests in … / OK
 ```
 
 ### 4.2 端到端手工场景（照抄命令，对比输出）
@@ -459,7 +459,7 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 
 - 全部实现位于 `workspace/`，入口 `python3 run.py …`（或安装后的 `fasti …`）。
 - 运行方式与命令速览见 [`README.md`](README.md)。
-- 自测统计：**自动化 115/115 通过（见 §11；无 artifacts 环境同样 0 skip 全绿）；手工/端到端 49 条用例中 47 条完全通过、2 条「核心语义通过 + 真实环境待验」、0 失败**。
+- 自测统计：**自动化 116/116 通过（见 §12；无 artifacts 环境同样 0 skip 全绿）；手工/端到端 49 条用例中 47 条完全通过、2 条「核心语义通过 + 真实环境待验」、0 失败**。
 - **等待 QA 独立验证**：以上「完成」仅为开发侧自测结论，不代表项目验收通过；QA 应按 `artifacts/product-spec.md` 的 59 条 AC 独立复现并给出 `pass` / `fail` 判定。
 
 ---
@@ -674,7 +674,10 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 | 13 | **`f34bb18`** | **C-08 相似检测核心**：`core/similarity.py`（两级规则/归一化/实体词/find_similar/stateless 令牌）+ 阈值常量 + 两个错误码 + `test_similarity.py`（93 → 103） |
 | 14 | **`2b9bc34`** | **C-08 服务端 B**：`fact.add` 检测/令牌校验/不落盘、事件+读模型 `duplicate_confirmation`、schema 同步、history/show/导出审计、CLI `--confirm-duplicate`、web `confirm_token`/409；`test_duplicate_conflict.py`（103 → 115） |
 | 15 | **`ba2aa2e`** | **C-08 前端 A**：类别当前有效事实列表 + 409 弹窗（改成演进/纠正/确认新增）+ fixture/契约测试同步 |
-| 16 | 本文件 commit | README / SELFTEST 同步（§11 C-08 证据：真实 Tier2、CLI/HTTP 双路 AC-15-4/5、审计/导出） |
+| 16 | `76c54ee` / `a044886` | README / SELFTEST 同步（§11 C-08 证据：真实 Tier2、CLI/HTTP 双路 AC-15-4/5、审计/导出；令牌口径勘误） |
+| 17 | **`ffff45a`** | **Bug 修复**：导出 README 格式版本改为从 `constants.FORMAT_VERSION` 动态生成 + importer warning 同步；回归测试（115 → 116） |
+| 18 | **`851d3e8`** | **清理**：删除死代码 `profile_text_for_status`；核心层过时版本表述（lifecycle/validate_*/model/profile）修正 |
+| 19 | 本文件 commit | README / SELFTEST 文档版本与过时引用清理（§12） |
 | 8 | 本文件 commit | README / SELFTEST 同步（§9.9 前端字段契约修复证据；用例 75） |
 
 ### 9.3 自动化测试（76 用例时点记录；C-07 后为 93 用例，见 §10）
@@ -1043,12 +1046,12 @@ FAILED (failures=3)
 | 格式版本 | `format_version 3` / `schema_version 3` / `contract_version 1.3.0`；v1/v2 不向后兼容 | `constants`、`_shared`/`importer` 格式门、包内 DDL 逐字节同步 |
 | 迁移 | `scripts/migrate_v2_to_v3.py`：v2 月值→月起点+事件偏移、format→3、原子写回、幂等、dry-run | 见 §10.5 |
 
-### 10.2 测试（C-07 时点 76 → 93；C-08 后全量 115，见 §11）
+### 10.2 测试（C-07 时点 76 → 93；C-08 后全量 115，2026-11-15 清理后 116，见 §11/§12）
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests
 Ran 93 tests in 1.009s
-OK      # C-07 时点；C-08 后为 115（见 §11）
+OK      # C-07 时点；C-08 后 115、清理后 116（见 §11/§12）
 ```
 
 新增/重写覆盖（除既有 76 条按 v3 更新外）：
@@ -1198,12 +1201,12 @@ $ python3 scripts/migrate_v2_to_v3.py --data-dir /tmp/fasti-v2-copy
 | CLI | `fact add --confirm-duplicate <TOKEN>`；CONFLICT 在 stderr 列候选与令牌；`--json` 错误 details 完整 |
 | Web | `POST /api/facts` 接受 `confirm_token`；`CONFLICT_*`⇒409、`VALIDATION_*`⇒400（既有映射）；响应 fact 含审计字段 |
 
-### 11.2 测试（93 → **115**，全绿）
+### 11.2 测试（93 → **115**，全绿；2026-11-15 清理后 116，见 §12）
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests
 Ran 115 tests in 1.257s
-OK
+OK      # C-08 交付时点；2026-11-15 清理后 116（见 §12）
 ```
 
 新增：
@@ -1322,3 +1325,91 @@ $ python3 -m compileall -q fasti scripts           # OK
 - 未写入用户 `~/.fasti`（所有验证用 `--data-dir` 临时目录）。
 - **等待 QA 独立验证**：重点 AC-15-4/15-5（CLI+HTTP 双路，见 §11.4）、审计可见性（§11.4 导出/历史/show）、
   AC-14 页面交互（§11.5）与 AC-15-6/15-7（静默/范围）。
+
+---
+
+## 12. 文档版本与过时引用清理（2026-11-15）
+
+> 触发：文档审计发现「导出包 README 版本号与 manifest 自相矛盾」+ 死代码 + 若干过时版本表述。
+> 约束：只改 `workspace/`；不触碰用户 `~/.fasti`；每步测试全绿。
+
+### 12.1 Bug 1：导出包 README 硬编码旧格式版本（用户可见）
+
+**现象**：同一导出包里 `README.md` 写「format_version 2 / 只接受 format_version == 2」，
+而 `manifest.json` 写 `"format_version": 3` —— 自相矛盾。
+
+**修复**：`README_MD` → `README_MD_TEMPLATE`，标题/说明/格式门/标识/版本段全部由
+`%(format_version)d` 从 `constants.FORMAT_VERSION` 生成（禁止硬编码数字）；格式描述同步为
+「UUIDv7 + 秒级生效时间 + C-08 可选审计字段」；格式门迁移指引指向 §12.5 / §13.5。
+同类硬编码：`importer` 导入成功 warning 的「format_version 2」→ `constants.FORMAT_VERSION`。
+
+**实测（真实 export）**：
+```
+$ head -1 <bundle>/README.md
+# Fasti 导出 bundle（format_version 3）
+$ grep -n "format_version" <bundle>/README.md
+1:# Fasti 导出 bundle（format_version 3）
+4:`format_version: 3` 对应 **UUIDv7 标识 + 秒级生效时间 + 可选重复确认审计字段**
+25:- **格式门**：只接受 `format_version == 3` 的 bundle（当前工具格式）...
+29:## 标识与时间（format_version 3）
+46:- `format_version: 3`（当前格式）；更早的 v1 / v2 导出包不被导入。
+$ python3 -c "import json; print(json.load(open('<bundle>/manifest.json'))['format_version'])"
+3
+README 与 manifest 版本一致: True
+```
+**回归测试**：`test_export_import.test_export_readme_matches_manifest_version`
+（断言 README 标题/格式门/版本段与 manifest/constants 一致，且不含旧「format_version 2」）；
+`test_import_roundtrip` 断言导入 warning 使用当前版本号。
+
+### 12.2 Bug 2：死代码 + 过时参数名
+
+`fasti/core/status.py` 的 `profile_text_for_status(model, category_id=None, trace=False)`：
+- 全仓 grep 仅定义处、**无任何调用方**；
+- `build_profile_view` 参数早已改为 `category_key`，调用即 `TypeError`（潜在未爆雷）。
+**修复**：删除该函数与随之无用的 `profile_module` import（`status.py` 其余逻辑不变）。
+
+### 12.3 清理清单（当前代码/当前文档；非历史记录）
+
+| 文件 | 过时内容 | 修正 |
+|---|---|---|
+| `fasti/core/export.py` | 模块 docstring v2；README_MD 硬编码 2（5 处） | v3 语义 + 动态 `constants.FORMAT_VERSION` |
+| `fasti/core/importer.py` | 导入 warning「format_version 2」 | `constants.FORMAT_VERSION` |
+| `fasti/core/services/lifecycle.py` | docstring「v2 / format_version 2」 | 「当前格式 `constants.FORMAT_VERSION`」 |
+| `fasti/core/validate_sql.py` | docstring「v2 读取模型，schema_version 2」 | 「当前读取模型，schema_version 3」 |
+| `fasti/core/validate_events.py` | docstring「v2」；消息「（v2 格式）」 | 「当前格式」/「当前格式」 |
+| `fasti/core/validate_invariants.py` | docstring v2；注释 `format_version == 2`；「v2 修订」 | 当前格式表述 |
+| `fasti/core/model.py` / `profile.py` | docstring「v2 标识」 | 「当前格式」 |
+| `workspace/README.md` | 「app.js 与基线内联内容做字节 pin（sha256 0fb916a6…）」已不存在 | 改为「node --check + 结构与字段契约守卫（不再字节 pin）」 |
+| `workspace/README.md` / `SELFTEST.md` | 用例数 115（C-08 后） | 116（本次新增回归测试） |
+| `workspace/SELFTEST.md` | 头部「依据 architecture v1.1 / api-spec v1.1 / schema v1 / product-spec v3.0」 | architecture **v1.7.1** / api-spec **contract 1.4.0** / schema **3** / product-spec **v4.0** |
+
+### 12.4 有意保留的旧字符串（逐条理由）
+
+1. `SELFTEST.md` §3.7 的旧导入报错输出「format_version 2（当前支持版本 1）」——**历史实测粘贴**
+   （2026-11-09 v1 时代的输出），保留时间点证据。
+2. `SELFTEST.md` §9 / §10 / §11 的历史变更章节（含 `format_version: 2`、v2/短 ID、115 用例等）——
+   **带日期/commit 的变更记录**，记录当时状态，不随当前版本改数。
+3. `scripts/migrate_v2_to_v3.py` 与 `tests/test_migrate_v2_to_v3.py` 中的 v2 引用——
+   **迁移源语义**（v2→v3），正确且不可改。
+4. `fasti/core/clock.py` 的 `is_month` docstring「v2 月格式」——该 helper 仅用于迁移/兼容校验。
+5. `constants.SIMILARITY_TOKEN_ALGORITHM = "ngram-entity-v2"`——**契约字面量**（令牌公式），不可改。
+6. `README.md`/`SELFTEST.md` 中 v1→v2、v2→v3 的**迁移路径说明**与备份目录名（`~/.fasti.v2-backup`）——
+   迁移目标语义，正确。
+7. `SELFTEST.md` commit 表中的历史用例数（40/68/72/76/93/103/115）——各 commit 时点数据。
+
+> 说明：任务提到的「workspace/README.md 写 68 个测试」在本次全仓 grep 中未发现——
+> 审计起点 README 已随 C-08 更新为 115（`/Users/wry/.../workspace/README.md` 无「68 个测试」字样）；
+> 本次仍将当前计数更新为 **116**，并把 `SELFTEST.md` 历史 commit 表的 68 视为时点记录保留。
+
+### 12.5 验证
+
+| 项 | 结果 |
+|---|---|
+| unittest | **Ran 116 tests … OK**（新增 export README 版本一致性回归） |
+| `verify --deep` | **7/7 PASS**（结论：通过） |
+| 导出包一致性 | README 首行/格式门/版本段 = manifest.format_version = 3（实测 True） |
+| `node --check` / 行数 | app.js exit 0；无文件 >500 行 |
+| 死代码 | `grep -rn profile_text_for_status fasti/` → 无结果；`category_id=` 无调用 |
+| 用户数据 | 未触碰 `~/.fasti`（全部 `--data-dir` 临时目录） |
+
+**等待 QA 复验**：导出包 README 与 manifest 一致性、删除死代码后全量回归、文档版本表述。
