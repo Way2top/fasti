@@ -199,7 +199,8 @@ def import_bundle(data_dir, bundle_dir, overwrite, backup):
     store.delete_manifest(data_dir)                  # 派生状态回到「待重算」
 
     warnings = []
-    warnings.append("已导入结构化数据（format_version 2）；Markdown 人读文件不参与导入，可用 recompute/render 重新生成")
+    warnings.append("已导入结构化数据（format_version %d）；Markdown 人读文件不参与导入，"
+                    "可用 recompute/render 重新生成" % constants.FORMAT_VERSION)
     view_files = ("profile.md", "log.md")
     recorded = {entry["path"]: entry.get("sha256") for entry in manifest.get("files", [])
                 if isinstance(entry, dict)}

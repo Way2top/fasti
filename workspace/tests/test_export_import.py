@@ -6,7 +6,7 @@ import shutil
 import unittest
 
 from _base import BaseStoreTest, _sha
-from fasti.core import api, errors, store
+from fasti.core import api, constants, errors, store
 
 
 class TestExportImport(BaseStoreTest):
@@ -53,12 +53,35 @@ class TestExportImport(BaseStoreTest):
         self.assertEqual(manifest["payload"]["sha256"],
                          _sha(os.path.join(out1, "data", "events.jsonl")))
 
+    def test_export_readme_matches_manifest_version(self):
+        """Bug 回归：bundle README 的版本号必须与 manifest/当前 constants 一致（禁止硬编码旧版本）。"""
+        self._populate()
+        exported = api.export_bundle(self.data_dir)
+        out_dir = exported["output_dir"]
+        with open(os.path.join(out_dir, "README.md"), encoding="utf-8") as handle:
+            readme = handle.read()
+        with open(os.path.join(out_dir, "manifest.json"), encoding="utf-8") as handle:
+            manifest = json.load(handle)
+        expected = constants.FORMAT_VERSION
+        self.assertIn("# Fasti 导出 bundle（format_version %d）" % expected, readme)
+        self.assertIn("`format_version: %d`" % expected, readme)
+        self.assertIn("`format_version == %d`" % expected, readme)
+        self.assertNotIn("format_version 2", readme)
+        self.assertNotIn("format_version: 2", readme)
+        self.assertEqual(manifest["format_version"], expected)
+        # README 与 manifest 陈述同一版本号
+        self.assertIn('"format_version":%d' % expected,
+                      json.dumps(manifest, sort_keys=True, separators=(",", ":")))
+
     def test_import_roundtrip(self):
         self._populate()
         exported = api.export_bundle(self.data_dir)
         target = os.path.join(self.tmp, "imported")
         result = api.import_bundle(target, exported["output_dir"], False, True)
         self.assertEqual(result["events_imported"], 13)
+        joined = " ".join(result.get("warnings", []))
+        self.assertIn("format_version %d" % constants.FORMAT_VERSION, joined)
+        self.assertNotIn("format_version 2", joined)
         self.assertEqual(store.read_events_bytes(target),
                          store.read_events_bytes(self.data_dir))
         self.assertIsNone(store.load_manifest(target))

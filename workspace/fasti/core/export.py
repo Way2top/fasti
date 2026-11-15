@@ -1,8 +1,9 @@
-"""导出（C7，v2 = UUIDv7）：OKF 形状 bundle + JSONL 双轨（ADR-012 / architecture §4.1）。
+"""导出（v3）：OKF 形状 bundle + JSONL 双轨（ADR-012 / architecture §4.1）。
 
 确定性：除 manifest.json 的 exported_at 外，两次导出的同名文件逐字节一致。
-v2：`format_version: 2`；category 行以 key 为身份（无 category_id）；
-fact_revision 行以 (fact_id, seq) 定位（无 revision_id）；line_id/fact_id 为完整 UUIDv7。
+当前格式（`constants.FORMAT_VERSION`）：UUIDv7 标识 + 秒级生效时间（RFC3339 带本机偏移，
+C-07）+ 可选重复确认审计字段（C-08）；category 行以 key 为身份（无 category_id）；
+fact_revision 行以 (fact_id, seq) 定位（无 revision_id）。
 写入策略：先写 <out>.partial/，全部 fsync 成功后原子改名为 <out>/。
 """
 
@@ -15,10 +16,11 @@ from . import errors
 from . import profile
 from . import store
 
-README_MD = """# Fasti 导出 bundle（format_version 2）
+README_MD_TEMPLATE = """# Fasti 导出 bundle（format_version %(format_version)d）
 
 本目录是 Fasti 的一次完整导出，采用「OKF 形状 Markdown + 结构化 JSONL」双轨。
-`format_version: 2` 对应 **UUIDv7 标识方案**（C-06）。
+`format_version: %(format_version)d` 对应 **UUIDv7 标识 + 秒级生效时间 + 可选重复确认审计字段**
+（C-06 / C-07 / C-08）。
 
 ## 双轨说明
 
@@ -38,30 +40,36 @@ fasti import <bundle 目录>
 - 空环境：直接完整还原（类别的启用状态、自定义类别、全部事实与修订都在 events.jsonl 里）。
 - 非空环境：必须显式 `--overwrite`；默认先写 `state/backups/events-<时间戳>.jsonl` 自动备份。
 - **Markdown 不参与导入**：人工修改 Markdown 不会改变事实与画像；要改数据请用 fasti 命令。
-- **格式门**：只接受 `format_version == 2` 的 bundle。v1（序号 ID 方案）导出包会被拒绝并提示迁移
-  （`IMPORT_UNSUPPORTED_FORMAT_VERSION`），迁移方法见 architecture.md §12.5。
+- **格式门**：只接受 `format_version == %(format_version)d` 的 bundle（当前工具格式）。更早的导出包
+  （v1 序号 ID / v2 月精度）会被拒绝并提示迁移（`IMPORT_UNSUPPORTED_FORMAT_VERSION`），
+  迁移方法见 architecture.md §12.5 / §13.5。
 
-## 标识（v2）
+## 标识与时间（format_version %(format_version)d）
 
 - `line_id` / `fact_id`：UUIDv7（RFC 9562，36 字符小写规范形式，时间有序）。
 - 类别身份：语义 `category_key`（无 `category_id`）。
 - 修订：无独立 ID，以 `(fact_id, seq)` 复合定位。
+- 生效时间：`valid_from` / `valid_to` 为**秒级完整 RFC3339（带本机偏移）**；人读 Markdown 用自适应显示。
+- 重复确认审计：确认新增的事实行可带 `duplicate_confirmation`（C-08）。
 - CLI text 显示的短 ID（默认前 12 位十六进制）**不会**写入本 bundle；本 bundle 内 ID 一律完整形式。
 
 ## OKF 对齐口径（方向对齐，不声称严格符合规范）
 
 - 形状级对齐：Markdown + YAML frontmatter、一概念一文件、路径即概念 ID、根 `index.md`、按时间排列的 `log.md`、纯 Markdown 相对链接。
 - 已知缺口：OKF 没有版本链 / `supersedes` / 有效区间 / 纠正语义，无法无损表达「演进 vs 纠正」。
-- 本工具的扩展 frontmatter 字段（不属于 OKF 核心字段）：`fact_id`、`line_id`、`category`、`valid_from`、`valid_to`、`updated_at`（v3 起 valid_from/valid_to 为完整 RFC3339）
+- 本工具的扩展 frontmatter 字段（不属于 OKF 核心字段）：`fact_id`、`line_id`、`category`、`valid_from`、`valid_to`、`updated_at`（均为完整 RFC3339）。
 
 ## 版本
 
-- `format_version: 2`（v2 = UUIDv7）；v1 导出包不被导入。
+- `format_version: %(format_version)d`（当前格式）；更早的 v1 / v2 导出包不被导入。
 
 ## 说明
 
 - 本目录内除 `manifest.json` 的 `exported_at` 外不含生成时间、机器名或绝对路径。
 """
+
+README_MD = README_MD_TEMPLATE % {"format_version": constants.FORMAT_VERSION}
+
 
 
 def default_out_dir(data_dir):
