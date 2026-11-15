@@ -143,6 +143,9 @@
         var candidate = data.candidate;
         var lines = ["候选 " + candidate.candidate_id,
                      "状态：" + candidate.status + "；内容：" + candidate.content,
+                     "粒度：" + (candidate.granularity === "summary" ?
+                       ("summary（subject=" + (candidate.subject || "-") + "）") :
+                       (candidate.granularity || "未知")),
                      "召回：mode=" + candidate.recall.mode + "，bytes=" +
                      candidate.recall.corpus_bytes + "，truncated=" +
                      candidate.recall.truncated];

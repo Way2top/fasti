@@ -189,6 +189,7 @@ class TestExtractRuntime(ExtractRuntimeBase):
         self._run(extraction, judgments)
         detail = api.show_extract_candidate(self.data_dir, candidate_id)
         self.assertEqual(detail["candidate"]["candidate_id"], candidate_id)
+        self.assertEqual(detail["candidate"]["granularity"], "atomic")
         details = detail["recall_details"]
         self.assertTrue(details)
         first = [item for item in details if item["fact_id"] == base["fact_id"]][0]
@@ -270,8 +271,8 @@ class TestExtractRuntime(ExtractRuntimeBase):
                         if "可用类别" in item["messages"][0]["content"]][0]
         judge_call = [item for item in mock.requests
                       if "判定" in item["messages"][0]["content"]][0]
-        self.assertEqual(extract_call["max_tokens"], 400 + 300 * 3)
-        self.assertEqual(judge_call["max_tokens"], 400 + 300 * 3)
+        self.assertEqual(extract_call["max_tokens"], 1500 + 600 * 3)
+        self.assertEqual(judge_call["max_tokens"], 600 + 400 * 3)
         self.assertEqual(run["counters"]["candidates_created"], 3)
 
     def test_judge_truncation_fails_with_dedicated_code(self):

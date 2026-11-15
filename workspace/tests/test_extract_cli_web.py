@@ -109,6 +109,33 @@ class TestExtractCli(BaseStoreTest):
         self.assertIn("目标事实（update/conflict）", out)       # update 目标内容
         self.assertIn("来源：session=sess-cli message_ids=['m1']", out)
 
+    def test_cli_show_granularity_display(self):
+        old_id = "cand-" + "d" * 20
+        extract_state.append_candidate(self.data_dir, extract_state.new_candidate(
+            old_id, "sess-cli", ["m1"], [1], "chunk", "run-1", "旧候选", "tech",
+            "new", 0.9,
+            {"mode": "full", "corpus_bytes": 0, "current_count": 0,
+             "historical_count": 0, "recalled_fact_ids": [],
+             "historical_fact_ids": [], "reasons": {}, "truncated": False},
+            {"action": "review", "reason_code": "auto_write_disabled"},
+            extract_state.evidence_key_for("sess-cli", ["m1"], "旧候选")))
+        out = self._run("extract", "show", old_id).stdout
+        self.assertIn("粒度：未知", out)                        # 旧候选不报错
+
+        summary_id = "cand-" + "e" * 20
+        extract_state.append_candidate(self.data_dir, extract_state.new_candidate(
+            summary_id, "sess-cli", ["m1"], [1], "chunk", "run-1",
+            "正在做 Fasti 项目", "tech", "new", 0.9,
+            {"mode": "full", "corpus_bytes": 0, "current_count": 0,
+             "historical_count": 0, "recalled_fact_ids": [],
+             "historical_fact_ids": [], "reasons": {}, "truncated": False},
+            {"action": "review", "reason_code": "auto_write_disabled"},
+            extract_state.evidence_key_for("sess-cli", ["m1"], "正在做 Fasti 项目"),
+            granularity="summary", subject="Fasti",
+            prompt_version="c10-extract-v2"))
+        out = self._run("extract", "show", summary_id).stdout
+        self.assertIn("粒度：summary（subject=Fasti）", out)
+
     def test_cli_watermark_rebuilt_notice(self):
         import contextlib
         import io
@@ -141,6 +168,7 @@ class TestExtractCli(BaseStoreTest):
         self.assertIn("message_ids", script)                    # AC-17-1 来源证据
         self.assertIn("冲突标记", script)
         self.assertIn("watermark_rebuilt", script)              # AC-16-9
+        self.assertIn("粒度", script)                           # AC-16-2
         self.assertIn("编辑后通过", script)                     # AC-17-5
         with open(os.path.join(ROOT, "fasti", "adapters", "web_static", "index.html"),
                   encoding="utf-8") as handle:

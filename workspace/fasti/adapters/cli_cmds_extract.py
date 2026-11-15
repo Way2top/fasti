@@ -131,6 +131,16 @@ def _cmd_extract_queue(args, data_dir):
     return 0
 
 
+def _granularity_label(candidate):
+    granularity = (candidate or {}).get("granularity")
+    if granularity == "summary":
+        subject = (candidate or {}).get("subject")
+        return "summary（subject=%s）" % subject if subject else "summary"
+    if granularity == "atomic":
+        return "atomic"
+    return "未知"
+
+
 def _cmd_extract_show(args, data_dir):
     result = api.show_extract_candidate(data_dir, args.candidate_id)
     candidate = result["candidate"]
@@ -155,6 +165,7 @@ def _cmd_extract_show(args, data_dir):
         "系统相似：%s；两层冲突：%s"
         % ((candidate.get("system") or {}).get("similar"),
            (candidate.get("system") or {}).get("layer_mismatch")),
+        "粒度：" + _granularity_label(candidate),
         "决策：%s / %s" % ((candidate.get("decision") or {}).get("action"),
                           (candidate.get("decision") or {}).get("reason_code")),
     ]
