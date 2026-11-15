@@ -94,7 +94,10 @@ DEFAULT_MESSAGES = {
     "NOT_FOUND_LINE": "命题线不存在",
     "NOT_FOUND_PATH": "路径不存在",
     "STORE_NOT_INITIALIZED": "数据目录未初始化，请先运行 fasti init",
-    "STORE_FORMAT_UNSUPPORTED": "数据目录是旧格式（format_version != 2）：不支持向后兼容，请按迁移指引迁移到 v2（architecture.md §12.5）后重试",
+    "STORE_FORMAT_UNSUPPORTED": (
+        "数据目录是旧格式：不支持向后兼容读取；请先备份数据目录，再按迁移指引处理（%s）"
+        % constants.MIGRATION_GUIDE
+    ),
     "CONFLICT_STORE_EXISTS": "数据目录已有事件日志，拒绝覆盖",
     "CONFLICT_IMPORT_TARGET_NOT_EMPTY": "导入目标非空：请先备份，再显式使用 --overwrite 覆盖",
     "CONFLICT_STORE_LOCKED": "另一个 fasti 写命令正在执行，写锁在 5 秒内未能获取",
@@ -159,9 +162,8 @@ DEFAULT_MESSAGES = {
     "CORRUPT_MANIFEST": "派生状态清单 state/manifest.json 无法解析",
     "IMPORT_INVALID_MANIFEST": "导入 bundle 的 manifest.json 缺失或字段不合法",
     "IMPORT_UNSUPPORTED_FORMAT_VERSION": (
-        "不支持的导出格式版本（当前支持版本 %d）：旧格式（v1/v2）导出包需先迁移"
-        "（见 architecture.md §12.5 / §13.5；v2→v3 使用 scripts/migrate_v2_to_v3.py），"
-        "再用当前版本重新导出" % constants.FORMAT_VERSION
+        "不支持的导出格式版本（当前支持版本 %d）：旧格式导出包需先迁移；%s；"
+        "再用当前版本重新导出" % (constants.FORMAT_VERSION, constants.MIGRATION_GUIDE)
     ),
     "IMPORT_INVALID_RECORD": "导入记录结构不合法",
     "IMPORT_SEMANTIC_INVALID": "导入事件语义校验失败",

@@ -87,9 +87,10 @@ class TestFormatGate(BaseStoreTest):
                 self.assertEqual(ctx.exception.code, "STORE_FORMAT_UNSUPPORTED")
                 self.assertEqual(ctx.exception.exit_code, 5)
                 self.assertIn("迁移", ctx.exception.message)
-                self.assertIn("§13.5", ctx.exception.message)
+                self.assertIn("migrate_v3_to_v4", ctx.exception.message)
                 self.assertIn("migrate_v2_to_v3", ctx.exception.message)
-                self.assertIn("3", ctx.exception.message)
+                self.assertIn("format_version=4", ctx.exception.message)
+                self.assertIn("当前支持", ctx.exception.message)
 
     def test_verify_on_old_store_raises_format_error(self):
         v1_dir = os.path.join(self.tmp, "old-store-verify")
@@ -109,7 +110,7 @@ class TestFormatGate(BaseStoreTest):
         self.assertEqual(ctx.exception.exit_code, 4)
         self.assertIn("迁移", ctx.exception.message)
         self.assertIn("当前支持版本 4", ctx.exception.message)
-        self.assertIn("§13.5", ctx.exception.message)
+        self.assertIn("migrate_v3_to_v4", ctx.exception.message)
         self.assertIn("migrate_v2_to_v3", ctx.exception.message)
         self.assertFalse(os.path.exists(os.path.join(target, "events.jsonl")))
 
@@ -128,9 +129,21 @@ class TestFormatGate(BaseStoreTest):
         message = errors.DEFAULT_MESSAGES["IMPORT_UNSUPPORTED_FORMAT_VERSION"]
         self.assertEqual(constants.FORMAT_VERSION, 4)
         self.assertIn("当前支持版本 4", message)
-        self.assertIn("§13.5", message)
+        self.assertIn("migrate_v3_to_v4", message)
         self.assertIn("migrate_v2_to_v3", message)
         self.assertNotIn("当前支持版本 1", message)
+
+    def test_migration_hints_are_dynamic_and_cover_history(self):
+        """FAIL-09-K：迁移指引必须指向当前版本与 v3→v4 脚本（禁止硬编码旧指引）。"""
+        from fasti.core import constants
+        hints = [errors.DEFAULT_MESSAGES["STORE_FORMAT_UNSUPPORTED"],
+                 errors.DEFAULT_MESSAGES["IMPORT_UNSUPPORTED_FORMAT_VERSION"],
+                 constants.MIGRATION_GUIDE]
+        for hint in hints:
+            self.assertIn("scripts/migrate_v3_to_v4.py", hint)
+            self.assertIn("scripts/migrate_v2_to_v3.py", hint)
+            self.assertIn("v3→v4", hint)
+            self.assertIn(str(constants.FORMAT_VERSION), hint)
 
     def test_export_manifest_is_format_version_4(self):
         api.add_fact(self.data_dir, "tech", "x", "2026-11")

@@ -85,6 +85,15 @@ ARTIFACT_PATHS = {
 DEFAULT_TEMPLATE_ORDER = 1  # 仅占位：真实顺序见 templates/categories.json
 
 # ---------------------------------------------------------------- C-09 自动提取
+MIGRATE_V2_TO_V3_SCRIPT = "scripts/migrate_v2_to_v3.py"
+MIGRATE_V3_TO_V4_SCRIPT = "scripts/migrate_v3_to_v4.py"
+MIGRATION_GUIDE = (
+    "历史版本迁移：v1→v2 见 architecture.md §12.5；v2→v3 运行 %(v2v3)s；"
+    "v3→v4 运行 %(v3v4)s；迁移后重试（当前支持 format_version=%(current)d）"
+    % {"v2v3": MIGRATE_V2_TO_V3_SCRIPT, "v3v4": MIGRATE_V3_TO_V4_SCRIPT,
+       "current": FORMAT_VERSION}
+)
+
 EXTRACT_CONFIG_SCHEMA_VERSION = 1
 EXTRACT_STATE_SCHEMA_VERSION = 1
 EXTRACT_CONSENT_VERSION = 1

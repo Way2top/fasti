@@ -1,4 +1,4 @@
-"""内存 SQLite 声明式约束校验（当前读取模型，schema_version 3）。
+"""内存 SQLite 声明式约束校验（当前读取模型，schema_version 取 constants）。
 
 把折叠结果载入 `:memory:` SQLite 执行 `database-schema.sql`（随包副本，与
 artifacts/database-schema.sql 逐字节相同），用 PK/FK/UNIQUE/CHECK 做校验；
@@ -8,6 +8,8 @@ artifacts/database-schema.sql 逐字节相同），用 PK/FK/UNIQUE/CHECK 做校
 import os
 import json
 import sqlite3
+
+from . import constants
 
 from . import errors
 from . import store
@@ -95,7 +97,8 @@ def check_sql_constraints(model):
                      revision["revision_type"], revision["note"], revision["recorded_at"]),
                 )
         conn.execute("COMMIT")
-        return True, "内存 SQLite 执行 database-schema.sql（schema_version 3）约束通过"
+        return True, ("内存 SQLite 执行 database-schema.sql（schema_version %d）约束通过"
+                      % constants.SCHEMA_VERSION)
     except sqlite3.IntegrityError as exc:
         try:
             conn.execute("ROLLBACK")

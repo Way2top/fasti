@@ -67,8 +67,8 @@ def history_text(view):
 def _require_format_version(events):
     """格式门（api-spec conventions.format_versioning.load_gate）。
 
-    首事件必须是 store_initialized 且 format_version == 3，否则 STORE_FORMAT_UNSUPPORTED
-    （退出码 5，消息含「迁移」与迁移指引）。v1/v2 数据**不向后兼容**（ADR-024/026）。
+    首事件必须是 store_initialized 且 format_version == 当前版本，否则 STORE_FORMAT_UNSUPPORTED
+    （退出码 5，消息含「迁移」与迁移指引）。v1/v2/v3 数据**不向后兼容**（ADR-024/026/031）。
     """
     if not events:
         return  # 交给 fold 报 CORRUPT_EVENT_SEQUENCE
@@ -81,11 +81,10 @@ def _require_format_version(events):
         raise errors.make(
             "STORE_FORMAT_UNSUPPORTED",
             "数据目录是旧格式（format_version=%r，当前支持 %d）：不支持向后兼容读取；"
-            "请先备份数据目录，再按迁移指引迁移到 v3（architecture.md §13.5："
-            "运行 scripts/migrate_v2_to_v3.py 一次性迁移）后重试"
-            % (version, constants.FORMAT_VERSION),
+            "请先备份数据目录，再按迁移指引处理：%s"
+            % (version, constants.FORMAT_VERSION, constants.MIGRATION_GUIDE),
             details={"format_version": version, "supported": constants.FORMAT_VERSION,
-                     "migration": "architecture.md §13.5"},
+                     "migration": constants.MIGRATION_GUIDE},
             location="event seq=1",
         )
 
