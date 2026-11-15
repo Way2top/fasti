@@ -219,19 +219,36 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
             try:
                 chunks = session_source.chunk_messages(
                     {**session, "messages": new_messages})
+                categories = [{"key": category["key"],
+                               "display_name": category["display_name"]}
+                              for category in model.enabled_categories()]
+                buffer = []
                 for chunk in chunks:
-                    if counters["messages_processed"] + len(chunk["messages"]) > limit_messages:
+                    if counters["messages_processed"] + len(chunk["messages"]) \
+                            > limit_messages:
                         break
-                    created, chunk_recall = _process_chunk(
-                        data_dir, model, cfg, chunk, run_id, dry_run, dedupe,
-                        candidates_before, counters)
-                    llm_calls += 2 if created else 1
-                    if chunk_recall:
-                        recall_mode = chunk_recall["mode"]
-                        corpus_bytes = chunk_recall["corpus_bytes"]
-                        recalled_total += chunk_recall["recalled"]
-                        any_truncated = any_truncated or chunk_recall["truncated"]
-                    counters["messages_processed"] += len(chunk["messages"])
+                    buffer.extend(ops.extract_chunk(cfg, chunk, model, categories,
+                                                    sensitive, counters))
+                    llm_calls += 1
+                kept, stats = ops.postprocess_session(buffer)
+                for key in ("candidates_extracted", "candidates_after_dedup",
+                            "candidates_kept", "dropped_duplicate_summary",
+                            "dropped_by_session_cap"):
+                    counters[key] = counters.get(key, 0) + stats[key]
+                prepared = ops.prepare_kept(kept, session["session_id"],
+                                            candidates_before, dedupe, counters)
+                created, chunk_recall = 0, None
+                if prepared:
+                    created, chunk_recall = _decide_session(
+                        data_dir, model, cfg, session["session_id"], prepared,
+                        run_id, dry_run, dedupe, counters)
+                    llm_calls += 1
+                if chunk_recall:
+                    recall_mode = chunk_recall["mode"]
+                    corpus_bytes = chunk_recall["corpus_bytes"]
+                    recalled_total += chunk_recall["recalled"]
+                    any_truncated = any_truncated or chunk_recall["truncated"]
+                counters["messages_processed"] += len(new_messages)
             except errors.CoreError as exc:
                 counters["errors"] += 1
                 run_errors.append({"code": exc.code, "safe_detail": exc.message[:200]})
@@ -247,6 +264,13 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
             processed_record = diversion_record(
                 session, divert_input, "processed", "extract", diversion["reason"])
             processed_record["messages"] = len(new_messages)
+            processed_record["candidates_extracted"] = stats["candidates_extracted"]
+            processed_record["candidates_after_dedup"] = stats["candidates_after_dedup"]
+            processed_record["candidates_kept"] = stats["candidates_kept"]
+            processed_record["dropped_duplicate_summary"] = stats[
+                "dropped_duplicate_summary"]
+            processed_record["dropped_by_session_cap"] = stats[
+                "dropped_by_session_cap"]
             sessions_summary.append(processed_record)
     recall_summary = {"mode": recall_mode or "full", "corpus_bytes": corpus_bytes,
                       "candidates": counters["candidates_created"],
@@ -280,76 +304,9 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
     return run
 
 
-def _process_chunk(data_dir, model, cfg, chunk, run_id, dry_run, dedupe,
-                   candidates_before, counters):
+def _decide_session(data_dir, model, cfg, session_id, prepared, run_id, dry_run,
+                    dedupe, counters):
     sensitive = bool(cfg["extract"].get("sensitive_filter", True))
-    categories = [{"key": category["key"], "display_name": category["display_name"]}
-                  for category in model.enabled_categories()]
-    messages = extract_llm.build_extraction_messages(
-        chunk, sensitive_filter=sensitive, categories=categories)
-    extract_tokens = min(
-        constants.EXTRACT_EXTRACT_TOKENS_CAP,
-        constants.EXTRACT_EXTRACT_TOKENS_BASE
-        + constants.EXTRACT_EXTRACT_TOKENS_PER_MESSAGE * len(chunk["messages"]))
-    content = extract_llm.chat_completion(cfg, messages, max_tokens=extract_tokens)
-    valid, dropped = extract_llm.validate_extraction_result(content)
-    for reason, count in dropped.items():
-        counters["dropped_invalid"] = counters.get("dropped_invalid", 0) + count
-        counters["drop_reasons"] = counters.get("drop_reasons") or {}
-        counters["drop_reasons"][reason] = counters["drop_reasons"].get(reason, 0) + count
-    chunk_ids = [message["message_id"] for message in chunk["messages"]]
-    prepared = []
-    for candidate in valid:
-        category_key = extract_llm.resolve_category(candidate["category_key"], categories)
-        if category_key is None:
-            counters["dropped_invalid"] += 1
-            counters["drop_reasons"]["invalid_category_key"] += 1
-            continue
-        category = model.category(category_key)
-        if category is None or category["deleted_at"] is not None \
-                or not category["enabled"]:
-            counters["dropped_invalid"] += 1
-            counters["drop_reasons"]["invalid_category_key"] += 1
-            continue
-        evidence_ids = [item for item in candidate["evidence"]["message_ids"]
-                        if item in chunk_ids]
-        if not evidence_ids:
-            counters["dropped_invalid"] += 1
-            counters["drop_reasons"]["invalid_evidence"] += 1
-            continue
-        redacted, _kinds = extract_privacy.redact_text(candidate["content"], sensitive)
-        if extract_privacy.is_sensitive(candidate["content"], sensitive):
-            counters["sensitive_skipped"] += 1
-            continue
-        candidate_id = extract_state.candidate_id_for(
-            chunk["session_id"], evidence_ids, redacted, category_key, "new")
-        evidence_key = extract_state.evidence_key_for(
-            chunk["session_id"], evidence_ids, redacted)
-        existing_fact_id = dedupe.get(evidence_key)
-        existing_candidate = next((item for item in candidates_before.values()
-                                   if (item.get("dedupe") or {}).get("evidence_key")
-                                   == evidence_key
-                                   and item.get("status") in ("pending", "approved",
-                                                              "duplicate")), None)
-        if existing_fact_id or existing_candidate:
-            counters["duplicates"] += 1
-            continue
-        ordinals = {message["message_id"]: message["ordinal"]
-                    for message in chunk["messages"]}
-        prepared.append({
-            "candidate_id": candidate_id,
-            "content": redacted,
-            "category_key": category_key,
-            "time_hint": candidate["time_hint"],
-            "extraction_confidence": candidate["extraction_confidence"],
-            "message_ids": evidence_ids,
-            "message_ordinals": [ordinals[item] for item in evidence_ids],
-            "evidence_key": evidence_key,
-            "change_type": "new",
-            "granularity": candidate["granularity"],
-            "subject": candidate.get("subject"),
-            "prompt_version": constants.EXTRACT_PROMPT_EXTRACTION,
-        })
     if not prepared:
         return 0, None
     per_candidate, summary = extract_recall.recall_for_candidates(model, prepared)
@@ -383,8 +340,8 @@ def _process_chunk(data_dir, model, cfg, chunk, run_id, dry_run, dedupe,
             bool(cfg["extract"].get("auto_write")), counters["auto_written"],
             daily_writes)
         candidate = extract_state.new_candidate(
-            candidate_id, chunk["session_id"], item["message_ids"],
-            item["message_ordinals"], chunk["chunk_id"], run_id, item["content"],
+            candidate_id, session_id, item["message_ids"],
+            item["message_ordinals"], item["chunk_id"], run_id, item["content"],
             item["category_key"], "new", item["extraction_confidence"],
             recalc_for_candidate(recall_result), decision, item["evidence_key"],
             relation={"llm": relation["llm"], "target_fact_id": relation["target_fact_id"],
@@ -426,6 +383,8 @@ def _process_chunk(data_dir, model, cfg, chunk, run_id, dry_run, dedupe,
             counters["queued"] += 1
             extract_state.append_candidate(data_dir, candidate)
     return created, summary
+
+
 
 
 def recalc_for_candidate(recall_result):

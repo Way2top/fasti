@@ -5,7 +5,10 @@ import os
 
 from .. import clock
 from .. import constants
+from .. import extract_llm
+from .. import extract_privacy
 from .. import extract_state
+from .. import session_source
 
 
 def _empty_counters():
@@ -126,3 +129,119 @@ def diversion_record(session, divert_input, status, decision=None, reason=None,
     if error_code:
         record["error_code"] = error_code
     return record
+
+
+def summary_subject_key(subject):
+    """summary 去重键：NFKC + 小写 + 仅保留字母数字（去空白/标点）。"""
+    import unicodedata
+    if not subject:
+        return None
+    text = unicodedata.normalize("NFKC", subject).lower()
+    return "".join(char for char in text if char.isalnum()) or None
+
+
+def extract_chunk(cfg, chunk, model, categories, sensitive, counters):
+    """单块 A 段抽取 → 校验/过滤；返回 buffer 条目（不写库、不调判定）。"""
+    messages = extract_llm.build_extraction_messages(
+        chunk, sensitive_filter=sensitive, categories=categories)
+    extract_tokens = min(
+        constants.EXTRACT_EXTRACT_TOKENS_CAP,
+        constants.EXTRACT_EXTRACT_TOKENS_BASE
+        + constants.EXTRACT_EXTRACT_TOKENS_PER_MESSAGE * len(chunk["messages"]))
+    content = extract_llm.chat_completion(cfg, messages, max_tokens=extract_tokens)
+    valid, dropped = extract_llm.validate_extraction_result(content)
+    for reason, count in dropped.items():
+        counters["dropped_invalid"] = counters.get("dropped_invalid", 0) + count
+        counters["drop_reasons"] = counters.get("drop_reasons") or {}
+        counters["drop_reasons"][reason] = counters["drop_reasons"].get(reason, 0) + count
+    chunk_ids = [message["message_id"] for message in chunk["messages"]]
+    ordinals = {message["message_id"]: message["ordinal"]
+                for message in chunk["messages"]}
+    buffer = []
+    for candidate in valid:
+        category_key = extract_llm.resolve_category(candidate["category_key"], categories)
+        if category_key is None:
+            counters["dropped_invalid"] += 1
+            counters["drop_reasons"]["invalid_category_key"] += 1
+            continue
+        category = model.category(category_key)
+        if category is None or category["deleted_at"] is not None \
+                or not category["enabled"]:
+            counters["dropped_invalid"] += 1
+            counters["drop_reasons"]["invalid_category_key"] += 1
+            continue
+        evidence_ids = [item for item in candidate["evidence"]["message_ids"]
+                        if item in chunk_ids]
+        if not evidence_ids:
+            counters["dropped_invalid"] += 1
+            counters["drop_reasons"]["invalid_evidence"] += 1
+            continue
+        redacted, _kinds = extract_privacy.redact_text(candidate["content"], sensitive)
+        if extract_privacy.is_sensitive(candidate["content"], sensitive):
+            counters["sensitive_skipped"] += 1
+            continue
+        buffer.append({
+            "content": redacted,
+            "category_key": category_key,
+            "granularity": candidate["granularity"],
+            "subject": candidate.get("subject"),
+            "summary_subject_key": summary_subject_key(candidate.get("subject")),
+            "time_hint": candidate["time_hint"],
+            "extraction_confidence": candidate["extraction_confidence"],
+            "message_ids": evidence_ids,
+            "message_ordinals": [ordinals[item] for item in evidence_ids],
+            "chunk_id": chunk["chunk_id"],
+            "prompt_version": constants.EXTRACT_PROMPT_EXTRACTION,
+        })
+    return buffer
+
+
+def postprocess_session(buffer, cap=None):
+    """summary 去重 → 确定性排序 → 截断 cap（默认 5；summary+atomic 都计入）。"""
+    cap = cap or constants.EXTRACT_SESSION_CANDIDATE_CAP
+    grouped, atomic = {}, []
+    for item in buffer:
+        if item["granularity"] == "summary" and item.get("summary_subject_key"):
+            grouped.setdefault(item["summary_subject_key"], []).append(item)
+        else:
+            atomic.append(item)
+    kept_summaries = []
+    dropped_duplicate = 0
+    for key in sorted(grouped):
+        items = sorted(grouped[key], key=lambda item: (
+            -item["extraction_confidence"], min(item["message_ordinals"]),
+            item["content"], item["chunk_id"]))
+        kept_summaries.append(items[0])
+        dropped_duplicate += len(items) - 1
+    merged = kept_summaries + atomic
+    merged.sort(key=lambda item: (
+        0 if item["granularity"] == "summary" else 1,
+        -item["extraction_confidence"], item["content"],
+        min(item["message_ordinals"]), item["chunk_id"]))
+    kept = merged[:cap]
+    stats = {"candidates_extracted": len(buffer),
+             "candidates_after_dedup": len(merged),
+             "candidates_kept": len(kept),
+             "dropped_duplicate_summary": dropped_duplicate,
+             "dropped_by_session_cap": len(merged) - len(kept)}
+    return kept, stats
+
+
+def prepare_kept(kept, session_id, candidates_before, dedupe, counters):
+    """确定性 candidate_id/evidence_key + 幂等去重 → 可送召回/判定的候选。"""
+    prepared = []
+    for item in kept:
+        candidate_id = extract_state.candidate_id_for(
+            session_id, item["message_ids"], item["content"],
+            item["category_key"], "new")
+        evidence_key = extract_state.evidence_key_for(
+            session_id, item["message_ids"], item["content"])
+        if dedupe.get(evidence_key) or any(
+                (candidate.get("dedupe") or {}).get("evidence_key") == evidence_key
+                and candidate.get("status") in ("pending", "approved", "duplicate")
+                for candidate in candidates_before.values()):
+            counters["duplicates"] += 1
+            continue
+        prepared.append({**item, "candidate_id": candidate_id,
+                         "evidence_key": evidence_key, "session_id": session_id})
+    return prepared

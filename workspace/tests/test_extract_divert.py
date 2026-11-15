@@ -105,6 +105,20 @@ class TestDivertPrompt(unittest.TestCase):
                           "assistant", "tool"):
             self.assertNotIn(forbidden, sent)
 
+    def test_v2_rules_project_progress_is_extract(self):
+        """C-10 追加：项目/工作进展算值得提取（产出 1 条 summary）；纯排障 skip。"""
+        from fasti.core import constants
+        self.assertEqual(constants.EXTRACT_PROMPT_DIVERT, "c10-divert-v2")
+        prompt = extract_divert.SYSTEM_DIVERT
+        for marker in ("包括项目与工作进展", "项目 summary", "纯技术排障问答",
+                       "pnpm build 报错怎么修", "我最近在做 Fasti 这个项目"):
+            self.assertIn(marker, prompt)
+        messages = extract_divert.build_divert_messages(
+            {"title": "个人记忆系统项目进展", "title_source": "provider",
+             "first_user_message": "我最近在做 Fasti 这个项目，P0 做完了",
+             "user_message_count": 6})
+        self.assertIn("个人记忆系统项目进展", json.dumps(messages, ensure_ascii=False))
+
     def test_validation_strict(self):
         self.assertEqual(extract_divert.validate_divert_result(
             '{"decision":"extract","reason":"含个人信息"}'),
@@ -207,6 +221,43 @@ class TestDivertRuntime(BaseStoreTest):
         second = api.extract_run(self.data_dir, trigger="manual")
         self.assertEqual(state["bad_calls"], 2)          # 下轮重试
         self.assertEqual(second["counters"]["divert_failed"], 1)
+
+    def test_project_progress_extract_vs_troubleshooting_skip(self):
+        """mock 分流：项目进展 ⇒ extract（1 条 summary）；纯排障 ⇒ skip。"""
+        _write_session(self.dsh_home, [
+            _header("proj-1"),
+            _title("个人记忆系统项目进展", "provider"),
+            _user(1, "m1", "我最近在做 Fasti 这个项目，P0 做完了")], session="proj")
+        _write_session(self.dsh_home, [
+            _header("trouble-1"),
+            _title("pnpm 排障", "provider"),
+            _user(1, "m1", "pnpm build 报错怎么修？")], session="trouble")
+
+        def divert_fn(payload):
+            first = json.loads(payload["messages"][1]["content"])
+            if "Fasti" in first["first_user_message"]:
+                return 200, _envelope({"decision": "extract",
+                                       "reason": "项目进展，产出 1 条 summary"})
+            return 200, _envelope({"decision": "skip",
+                                   "reason": "纯技术排障，无用户信息"})
+        self._transport(divert_fn,
+                        extraction={"candidates": [{
+                            "content": "在做一个 AI memory 方向的开源项目（Fasti）",
+                            "category_key": "projects", "granularity": "summary",
+                            "subject": "fasti", "time_hint": None,
+                            "extraction_confidence": 0.9,
+                            "evidence": {"message_ids": ["m1"]}}]},
+                        judgments={"judgments": []})
+        run = api.extract_run(self.data_dir, trigger="manual")
+        self.assertEqual(run["counters"]["divert_extract"], 1)
+        self.assertEqual(run["counters"]["divert_skip"], 1)
+        decisions = {record["session_id"]: record["decision"]
+                     for record in run["sessions"]}
+        self.assertEqual(decisions["proj-1"], "extract")
+        self.assertEqual(decisions["trouble-1"], "skip")
+        items = api.list_extract_candidates(self.data_dir, "pending")["items"]
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["granularity"], "summary")
 
     def test_three_prompt_routes(self):
         _write_session(self.dsh_home, [_header("routes"), _user(1, "m1", "我喜欢猫")])
