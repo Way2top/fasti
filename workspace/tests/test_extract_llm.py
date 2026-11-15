@@ -110,7 +110,10 @@ class TestLlmClient(unittest.TestCase):
              "chunk_text": "我喜欢 Python；key=sk-abcdefghijklmnop123456"},
             {"ordinal": 2, "message_id": "m2", "chunk_text": "我住在上海"},
         ]}
-        extract_messages = extract_llm.build_extraction_messages(chunk)
+        categories = [{"key": "tech", "display_name": "技术背景"},
+                      {"key": "goals", "display_name": "长期目标"}]
+        extract_messages = extract_llm.build_extraction_messages(
+            chunk, categories=categories)
         joined_a = json.dumps(extract_messages, ensure_ascii=False)
         # A 段只含用户消息（打码后），不含任何库数据/召回痕迹
         self.assertIn("我喜欢 Python", joined_a)
@@ -120,6 +123,10 @@ class TestLlmClient(unittest.TestCase):
         for marker in ("fact_id", "召回事实", "current |", "historical |", "短ID"):
             self.assertNotIn(marker, joined_a)
         self.assertNotIn("assistant", joined_a.lower())
+        # 类别清单是输出 schema：必须提供，便于 LLM 使用真实 key（真实联调 bug 修复）
+        self.assertIn("tech / 技术背景", joined_a)
+        self.assertIn("goals / 长期目标", joined_a)
+        self.assertIn("可用类别", joined_a)
 
         candidates = [{"candidate_id": "cand-" + "a" * 20, "content": "我喜欢 Python",
                        "category_key": "tech", "time_hint": None,

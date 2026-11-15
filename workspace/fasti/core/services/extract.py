@@ -115,7 +115,10 @@ def list_extract_runs(data_dir, limit=20):
 def _empty_counters():
     return {"sessions_seen": 0, "sessions_processed": 0, "sessions_skipped": 0,
             "messages_processed": 0, "candidates_created": 0, "auto_written": 0,
-            "queued": 0, "duplicates": 0, "sensitive_skipped": 0, "errors": 0}
+            "queued": 0, "duplicates": 0, "sensitive_skipped": 0, "errors": 0,
+            "dropped_invalid": 0,
+            "drop_reasons": {"invalid_candidate_structure": 0,
+                             "invalid_category_key": 0, "invalid_evidence": 0}}
 
 
 def _base_url_host(cfg):
@@ -331,23 +334,33 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
 def _process_chunk(data_dir, model, cfg, chunk, run_id, dry_run, dedupe,
                    candidates_before, counters):
     sensitive = bool(cfg["extract"].get("sensitive_filter", True))
-    messages = extract_llm.build_extraction_messages(chunk, sensitive_filter=sensitive)
+    categories = [{"key": category["key"], "display_name": category["display_name"]}
+                  for category in model.enabled_categories()]
+    messages = extract_llm.build_extraction_messages(
+        chunk, sensitive_filter=sensitive, categories=categories)
     content = extract_llm.chat_completion(cfg, messages, max_tokens=800)
     valid, dropped = extract_llm.validate_extraction_result(content)
     counters["dropped_invalid"] = counters.get("dropped_invalid", 0) + dropped
+    counters["drop_reasons"]["invalid_candidate_structure"] += dropped
     chunk_ids = [message["message_id"] for message in chunk["messages"]]
     prepared = []
     for candidate in valid:
-        category_key = candidate["category_key"]
+        category_key = extract_llm.resolve_category(candidate["category_key"], categories)
+        if category_key is None:
+            counters["dropped_invalid"] += 1
+            counters["drop_reasons"]["invalid_category_key"] += 1
+            continue
         category = model.category(category_key)
         if category is None or category["deleted_at"] is not None \
                 or not category["enabled"]:
-            counters["dropped_invalid"] = counters.get("dropped_invalid", 0) + 1
+            counters["dropped_invalid"] += 1
+            counters["drop_reasons"]["invalid_category_key"] += 1
             continue
         evidence_ids = [item for item in candidate["evidence"]["message_ids"]
                         if item in chunk_ids]
         if not evidence_ids:
-            counters["dropped_invalid"] = counters.get("dropped_invalid", 0) + 1
+            counters["dropped_invalid"] += 1
+            counters["drop_reasons"]["invalid_evidence"] += 1
             continue
         redacted, _kinds = extract_privacy.redact_text(candidate["content"], sensitive)
         if extract_privacy.is_sensitive(candidate["content"], sensitive):

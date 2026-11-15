@@ -17,6 +17,10 @@ def _cmd_extract_run(args, data_dir):
                counters["candidates_created"], counters["auto_written"],
                counters["queued"], recall["mode"], recall["corpus_bytes"],
                "是" if recall["truncated"] else "否"))
+    drops = {key: value for key, value in
+             (counters.get("drop_reasons") or {}).items() if value}
+    if drops:
+        text += "\n丢弃原因：%s" % ",".join("%s=%d" % item for item in sorted(drops.items()))
     if run.get("watermark_rebuilt"):
         text += "\n提示：检测到水位缺失/损坏，已从事实证据重建水位（watermark_rebuilt=true）"
     _emit("extract", run, text)
@@ -227,6 +231,11 @@ def _cmd_extract_runs(args, data_dir):
             counters.get("candidates_created"), counters.get("auto_written"),
             counters.get("queued"), recall.get("mode"), recall.get("corpus_bytes"),
             "是" if recall.get("truncated") else "否", counters.get("errors")))
+        drops = {key: value for key, value in (counters.get("drop_reasons") or {}).items()
+                 if value}
+        if drops:
+            lines.append("    丢弃原因：%s"
+                         % ",".join("%s=%d" % item for item in sorted(drops.items())))
     if not result["items"]:
         lines.append("（无）")
     lines.append("说明：运行记录不含会话原文/密钥")

@@ -163,17 +163,45 @@ def _extract_content(raw):
 
 
 # ---------------------------------------------------------------- 两段 prompt
-def build_extraction_messages(chunk, sensitive_filter=True):
-    """A 段：只发本块用户消息（打码后）；绝不包含 fact/召回数据。返回 messages。"""
+def category_catalog_text(categories):
+    """启用类别清单（schema，不是事实数据）→ prompt 行。"""
+    lines = []
+    for category in categories or []:
+        lines.append("- %s / %s" % (category["key"], category["display_name"]))
+    return "可用类别（category_key / 显示名，输出必须使用其中某个 category_key）：\n" \
+        + ("\n".join(lines) if lines else "（当前没有启用的类别）")
+
+
+def build_extraction_messages(chunk, sensitive_filter=True, categories=None):
+    """A 段：system = 抽取规则 + 启用类别清单（schema）；user = 本块用户消息（打码后）。
+
+    类别清单是输出 schema，**不是**事实/召回数据；A 段仍绝不包含任何 fact_id/召回/事实内容。
+    """
     lines = []
     for message in chunk["messages"]:
         text, _kinds = extract_privacy.redact_text(message["chunk_text"], sensitive_filter)
         lines.append({"ordinal": message["ordinal"],
                       "message_id": message["message_id"], "text": text})
+    system = SYSTEM_EXTRACT + "\n\n" + category_catalog_text(categories)
     return [
-        {"role": "system", "content": SYSTEM_EXTRACT},
+        {"role": "system", "content": system},
         {"role": "user", "content": json.dumps(lines, ensure_ascii=False)},
     ]
+
+
+def resolve_category(value, categories):
+    """LLM 返回的类别 → 真实 category_key：精确 key → 精确 display_name → None（非法）。
+
+    仅接受调用方传入的启用类别清单；display_name 只匹配清单内唯一项。
+    """
+    if not isinstance(value, str):
+        return None
+    for category in categories or []:
+        if category["key"] == value:
+            return category["key"]
+    matches = [category["key"] for category in categories or []
+               if category.get("display_name") == value]
+    return matches[0] if len(matches) == 1 else None
 
 
 def build_judgment_messages(candidates, recall_by_candidate, sensitive_filter=True):

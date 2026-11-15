@@ -195,6 +195,57 @@ class TestExtractRuntime(ExtractRuntimeBase):
         self.assertEqual(detail["target_fact"]["content"], "主力语言：Python")
         self.assertEqual(detail["target_fact"]["fact_id"], base["fact_id"])
 
+    def test_display_name_maps_to_real_key(self):
+        """真实 LLM 返回中文 display_name（技术背景）⇒ 容错映射为 tech。"""
+        _write_session(self.dsh_home, ["我会用 Rust 写服务"])
+        self._enable(auto_write=False)
+        content = "我会用 Rust 写服务"
+        candidate_id = extract_state.candidate_id_for(SESSION_ID, ["m1"], content,
+                                                      "tech", "new")
+        extraction = {"candidates": [self._candidate_payload(
+            content, category="技术背景")], "notes": ""}
+        judgments = {"judgments": [self._judgment(candidate_id, "new", 0.9)],
+                     "notes": ""}
+        run, _mock = self._run(extraction, judgments)
+        self.assertEqual(run["counters"]["queued"], 1)
+        candidate = api.list_extract_candidates(self.data_dir, "pending")["items"][0]
+        self.assertEqual(candidate["category_key"], "tech")
+
+    def test_invalid_category_key_dropped_with_reason(self):
+        """LLM 自拟非法 key（学习与技能）⇒ 丢弃且记录原因（不含原文）。"""
+        _write_session(self.dsh_home, ["我会用 Rust 写服务"])
+        self._enable(auto_write=False)
+        extraction = {"candidates": [self._candidate_payload(
+            "我会用 Rust 写服务", category="学习与技能")], "notes": ""}
+        run, mock = self._run(extraction, {"judgments": [], "notes": ""})
+        self.assertEqual(run["counters"]["candidates_created"], 0)
+        self.assertEqual(run["counters"]["drop_reasons"]["invalid_category_key"], 1)
+        self.assertEqual(run["counters"]["dropped_invalid"], 1)
+        # A 段 prompt 含类别 schema（key/显示名），但不含任何事实内容
+        request = json.dumps(mock.requests[0], ensure_ascii=False)
+        self.assertIn("tech / 技术背景", request)
+        self.assertIn("goals / 长期目标", request)
+
+    def test_a_prompt_includes_categories_but_no_facts(self):
+        """硬约束复验：A 段含启用类别清单（schema），不含 fact_id/召回/事实内容。"""
+        api.add_fact(self.data_dir, "tech", "数据库里的秘密事实", "2025-01")
+        _write_session(self.dsh_home, ["我会用 Rust 写服务"])
+        self._enable(auto_write=False)
+        extraction = {"candidates": [self._candidate_payload("我会用 Rust 写服务")],
+                      "notes": ""}
+        candidate_id = extract_state.candidate_id_for(SESSION_ID, ["m1"],
+                                                      "我会用 Rust 写服务", "tech", "new")
+        judgments = {"judgments": [self._judgment(candidate_id, "new", 0.9)],
+                     "notes": ""}
+        run, mock = self._run(extraction, judgments)
+        extract_request = [item for item in mock.requests
+                           if "抽取" in item["messages"][0]["content"]][0]
+        sent = json.dumps(extract_request, ensure_ascii=False)
+        self.assertIn("tech / 技术背景", sent)          # 类别 schema 必须注入
+        self.assertNotIn("数据库里的秘密事实", sent)     # 事实内容不得出现
+        self.assertNotIn("fact_id", sent)
+        self.assertNotIn("召回", sent)
+
     def test_system_similar_blocks_llm_new(self):
         api.add_fact(self.data_dir, "basics", "老家湖北黄冈", "2025-01")
         _write_session(self.dsh_home, ["我出生在湖北黄冈"])
