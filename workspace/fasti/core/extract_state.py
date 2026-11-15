@@ -170,6 +170,9 @@ def load_candidates(data_dir):
                 continue
             candidate_id = candidate.get("candidate_id")
             if candidate_id:
+                for key in ("granularity", "subject", "summary_subject_key",
+                            "prompt_version"):
+                    candidate.setdefault(key, None)
                 folded[candidate_id] = candidate
     return folded
 

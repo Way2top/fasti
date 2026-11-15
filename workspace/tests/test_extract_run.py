@@ -21,6 +21,7 @@ def _write_session(dsh_home, messages, session="s1", session_id=SESSION_ID):
     for index, text in enumerate(messages, start=1):
         events.append({"seq": index, "type": "user/message",
                        "data": {"id": "m%d" % index, "role": "user",
+                       "source": {"kind": "user"},
                                 "content": [{"type": "text", "text": text}]}})
     with open(path, "w", encoding="utf-8") as handle:
         for event in events:

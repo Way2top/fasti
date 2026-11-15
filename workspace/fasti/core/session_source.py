@@ -187,6 +187,7 @@ def load_session(path, allow_plain=False):
             provider_title = title
             break
     messages = []
+    source_counts = {}
     ordinal = 0
     max_seq = 0
     for line_number, _raw, event in events:
@@ -198,6 +199,11 @@ def load_session(path, allow_plain=False):
         data = event.get("data") if isinstance(event.get("data"), dict) else None
         if not data or data.get("role") != "user":
             continue
+        source = data.get("source") if isinstance(data.get("source"), dict) else {}
+        kind = source.get("kind")
+        source_counts[kind or "<missing>"] = source_counts.get(kind or "<missing>", 0) + 1
+        if kind not in constants.USER_MESSAGE_SOURCE_KINDS:
+            continue  # DSH 注入上下文（time-context/skill-catalog/...）不算用户消息
         text = _text_of(data.get("content"))
         if not text.strip():
             continue
@@ -210,7 +216,14 @@ def load_session(path, allow_plain=False):
             "ordinal": ordinal,
             "text": text,
         })
-    first_text = messages[0]["text"] if messages else ""
+    first_text = ""
+    for message in messages[:5]:
+        text = message["text"].strip()
+        if text.startswith("<system-reminder>") \
+                or text.lower().startswith("current runtime context"):
+            continue  # 防御性：跳过伪装成 user 的注入消息
+        first_text = message["text"]
+        break
     first_message, first_truncated = _truncate(
         first_text, constants.EXTRACT_FIRST_MESSAGE_MAX_CHARS)
     title_text = None
@@ -234,6 +247,7 @@ def load_session(path, allow_plain=False):
             "first_message_truncated": first_truncated,
             "user_message_count": len(messages),
             "title_kinds_seen": title_kinds_seen,
+            "user_message_source_counts": source_counts,
         },
     }
 

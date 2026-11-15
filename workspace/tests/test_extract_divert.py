@@ -29,6 +29,7 @@ def _header(session_id):
 def _user(seq, message_id, text):
     return {"seq": seq, "type": "user/message",
             "data": {"id": message_id, "role": "user",
+                     "source": {"kind": "user"},
                      "content": [{"type": "text", "text": text}]}}
 
 

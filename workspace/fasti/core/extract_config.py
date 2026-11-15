@@ -15,6 +15,67 @@ from . import errors
 from . import store
 
 CONFIG_REL = "config.json"
+LEGACY_CONFIG_KEYS = ("auto_trigger_on_open", "auto_trigger_min_interval_seconds")
+_MIGRATION = {}
+
+
+def _write_raw_atomic(data_dir, raw_cfg):
+    """原子写 config.json（0600）；失败抛 OSError。"""
+    raw = (json.dumps(raw_cfg, sort_keys=True, ensure_ascii=False, indent=2)
+           + "\n").encode("utf-8")
+    handle = tempfile.NamedTemporaryFile(mode="wb", dir=data_dir, prefix=".config.",
+                                         suffix=".tmp", delete=False)
+    tmp_path = handle.name
+    try:
+        handle.write(raw)
+        handle.flush()
+        os.fsync(handle.fileno())
+        handle.close()
+        try:
+            os.chmod(tmp_path, 0o600)
+        except OSError:
+            pass
+        os.replace(tmp_path, config_path(data_dir))
+    finally:
+        if os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+    try:
+        os.chmod(config_path(data_dir), 0o600)
+    except OSError:
+        pass
+
+
+def _migrate_raw(data_dir, raw):
+    """config schema 1→2：删 legacy 键、置 2、原子重写；返回 (raw2, warning)。
+
+    幂等：已是 schema 2 且无 legacy 键 ⇒ 不重写。失败 ⇒ 仅内存迁移 + 告警，不崩。
+    """
+    migrated = (raw.get("schema_version") != constants.EXTRACT_CONFIG_SCHEMA_VERSION
+                or any(key in (raw.get("extract") or {}) for key in LEGACY_CONFIG_KEYS))
+    if not migrated:
+        previous = _MIGRATION.get(data_dir) or {}
+        _MIGRATION[data_dir] = {"migrated": bool(previous.get("migrated")),
+                                "persisted": True, "warning": None}
+        return raw, None
+    raw = copy.deepcopy(raw)
+    extract = raw.get("extract") if isinstance(raw.get("extract"), dict) else {}
+    for key in LEGACY_CONFIG_KEYS:
+        extract.pop(key, None)
+    raw["extract"] = extract
+    raw["schema_version"] = constants.EXTRACT_CONFIG_SCHEMA_VERSION
+    warning = None
+    persisted = True
+    try:
+        _write_raw_atomic(data_dir, raw)
+    except OSError as exc:
+        persisted = False
+        warning = "配置 schema 迁移未落盘（内存已迁移，下次重试）：%s" % exc
+    _MIGRATION[data_dir] = {"migrated": True, "persisted": persisted,
+                            "warning": warning}
+    return raw, warning
 
 
 def default_config():
@@ -33,8 +94,6 @@ def default_config():
             "auto_write": False,
             "consent": {"version": constants.EXTRACT_CONSENT_VERSION,
                         "accepted_at": None, "text_sha256": None},
-            "auto_trigger_on_open": True,
-            "auto_trigger_min_interval_seconds": constants.EXTRACT_AUTO_TRIGGER_MIN_INTERVAL,
             "max_messages_per_run": constants.EXTRACT_MAX_MESSAGES_PER_RUN,
             "max_sessions_per_run": constants.EXTRACT_MAX_SESSIONS_PER_RUN,
             "auto_write_daily_limit": constants.EXTRACT_AUTO_WRITE_DAILY,
@@ -60,21 +119,37 @@ def _deep_merge(base, patch):
 
 
 def load_config(data_dir):
-    """读取配置（缺失 => 默认值）并应用环境变量覆盖（env 优先）。"""
+    """读取配置（缺失 => 默认值）并执行 schema 1→2 迁移；env 覆盖优先。
+
+    JSON 损坏/只读目录：告警但不崩，返回内存中可用配置（不写盘）。
+    """
     cfg = default_config()
     path = config_path(data_dir)
+    warning = None
     if os.path.isfile(path):
         try:
             with open(path, "r", encoding="utf-8") as handle:
                 raw = json.load(handle)
         except (OSError, ValueError) as exc:
-            raise errors.make("EXTRACT_LLM_CONFIG_INVALID",
-                              "config.json 不可解析：%s" % exc,
-                              details={"field": "config"}, location="config.json")
-        if not isinstance(raw, dict):
-            raise errors.make("EXTRACT_LLM_CONFIG_INVALID", "config.json 必须是 JSON 对象",
-                              details={"field": "config"}, location="config.json")
-        cfg = _deep_merge(cfg, raw)
+            warning = "config.json 不可解析，使用默认配置（未写盘）：%s" % exc
+            _MIGRATION[data_dir] = {"migrated": False, "persisted": False,
+                                    "warning": warning}
+            cfg["_config_warning"] = warning
+            raw = None
+        if raw is not None and not isinstance(raw, dict):
+            warning = "config.json 必须是 JSON 对象，使用默认配置（未写盘）"
+            _MIGRATION[data_dir] = {"migrated": False, "persisted": False,
+                                    "warning": warning}
+            cfg["_config_warning"] = warning
+            raw = None
+        if raw is not None:
+            raw, migrate_warning = _migrate_raw(data_dir, raw)
+            warning = warning or migrate_warning
+            if warning:
+                cfg["_config_warning"] = warning
+            cfg = _deep_merge(cfg, raw)
+    else:
+        _MIGRATION[data_dir] = {"migrated": False, "persisted": True, "warning": None}
     env = os.environ
     if env.get("FASTI_LLM_BASE_URL"):
         cfg["llm"]["base_url"] = env["FASTI_LLM_BASE_URL"]
@@ -102,12 +177,11 @@ def _validate_config(cfg):
         problems.append(("llm.max_retries", "应为 0..5 的整数"))
     if not isinstance(llm.get("json_mode", True), bool):
         problems.append(("llm.json_mode", "应为布尔值"))
-    for key in ("enabled", "auto_write", "auto_trigger_on_open", "sensitive_filter"):
+    for key in ("enabled", "auto_write", "sensitive_filter"):
         if not isinstance(extract.get(key), bool):
             problems.append(("extract." + key, "应为布尔值"))
-    for key in ("auto_trigger_min_interval_seconds", "max_messages_per_run",
-                "max_sessions_per_run", "auto_write_daily_limit",
-                "auto_write_per_run_limit"):
+    for key in ("max_messages_per_run", "max_sessions_per_run",
+                "auto_write_daily_limit", "auto_write_per_run_limit"):
         value = extract.get(key)
         if isinstance(value, bool) or not isinstance(value, int) or value < 1:
             problems.append(("extract." + key, "应为正整数"))
@@ -138,34 +212,11 @@ def missing_llm_fields(cfg):
 
 
 def save_config(data_dir, cfg):
-    """原子写 config.json（0600，不修改既有其他文件权限）。"""
+    """原子写 config.json（0600）；不写入下划线内部键。"""
+    cfg = {key: value for key, value in cfg.items() if not key.startswith("_")}
     _validate_config(cfg)
     store.ensure_dir(data_dir)
-    path = config_path(data_dir)
-    raw = json.dumps(cfg, sort_keys=True, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
-    handle = tempfile.NamedTemporaryFile(mode="wb", dir=data_dir, prefix=".config.",
-                                         suffix=".tmp", delete=False)
-    tmp_path = handle.name
-    try:
-        handle.write(raw)
-        handle.flush()
-        os.fsync(handle.fileno())
-        handle.close()
-        try:
-            os.chmod(tmp_path, 0o600)
-        except OSError:
-            pass
-        os.replace(tmp_path, path)
-    finally:
-        if os.path.exists(tmp_path):
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
+    _write_raw_atomic(data_dir, cfg)
     return cfg
 
 
@@ -203,9 +254,10 @@ def config_status(data_dir):
         "model": llm.get("model") or None,
         "base_url_host": host or None,
         "json_mode": bool(llm.get("json_mode", True)),
-        "auto_trigger_on_open": bool(extract.get("auto_trigger_on_open")),
-        "auto_trigger_min_interval_seconds": extract.get(
-            "auto_trigger_min_interval_seconds"),
+        "config_version": cfg.get("schema_version"),
+        "config_migrated": bool((_MIGRATION.get(data_dir) or {}).get("migrated")),
+        "config_persisted": bool((_MIGRATION.get(data_dir) or {}).get("persisted", True)),
+        "config_warning": (_MIGRATION.get(data_dir) or {}).get("warning"),
         "max_messages_per_run": extract.get("max_messages_per_run"),
         "max_sessions_per_run": extract.get("max_sessions_per_run"),
         "auto_write_daily_limit": extract.get("auto_write_daily_limit"),
