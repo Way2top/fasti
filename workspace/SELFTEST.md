@@ -87,8 +87,8 @@
 | ST-48 | AC-13-1~13-5（防呆） | `node --check fasti/adapters/web_static/app.js` + 断言 IIFE 首尾行 | 修复 R-F1 后 **exit 0**（修复前 `SyntaxError: Unexpected token '}'`，exit 1）；断言首行 `(function () {`、次行 `"use strict";`、倒数第二行 `})();` | ✅ |
 | ST-49 | 静态资源完整性（防呆） | 检查 `web_static/` 三文件存在/非空/单末尾 LF、`index.html` 仅同源引用、零外部 URL、与基线内联内容 sha256 一致 | 全部通过；`app.js` 内容 sha256 `0fb916a6…`、`style.css` 内容 sha256 `d6e0c406…` 与 `git show refactor-baseline:…/index.html` 的内联内容**逐字节相同** | ✅ |
 
-**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **214 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
-自动化测试：`Ran 214 tests … OK`（见 §4.1 与 §13）。
+**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **217 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
+自动化测试：`Ran 217 tests … OK`（见 §4.1 与 §13）。
 > 注：下表 ST-01~ST-47 中出现的 `fact-0001` / `line-0001` / `cat-0002` 为 **v1（序号方案）历史记录**；C-06 迁移后同一行为以 UUIDv7 + 短前缀复现，见 §9。
 
 ---
@@ -99,9 +99,9 @@
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests -v
-…（214 个用例，全 ok）
+…（217 个用例，全 ok）
 ----------------------------------------------------------------------
-Ran 214 tests in 5.206s
+Ran 217 tests in 5.228s
 
 OK
 ```
@@ -308,7 +308,7 @@ python3 -V                     # 期望 3.9+（实测 3.13.3）
 python3 -c "import sqlite3; print(sqlite3.sqlite_version)"   # 期望 >= 3.38（需 JSON1）
 ```
 
-### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，214 用例）
+### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，217 用例）
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -697,7 +697,8 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 | 36 | `976b30d` | C-10 M1 | **第 0 层会话分流**：session/title → divert_input（provider 标题优先、首条消息兜底、200/300 截断）、`extract_divert.py`（c10-divert-v1，严格 JSON）、运行接入（skip 推进水位/失败不推进且不中断、逐会话记录）；185→194 |
 | 37 | `3befae1`（C-10 M2） | **抽取 prompt 收紧 c10-extract-v2**：noise 六类/粒度规则/正反例、granularity+subject 校验与丢弃原因、候选 granularity/subject/prompt_version、runs.llm.prompt_version；194→197 |
 | 38 | `c1f2db4`（C-10 M3） | **会话级两阶段**：buffer/summary 去重/确定性排序/5 条上限；`c10-divert-v2`（项目进展算 extract）；197→204 |
-| 39 | **本 commit（C-10 M4）** | **config/state schema 2 + 迁移**；**修复 DSH 注入消息被当用户消息**（真实 38 会话 645→138 条）；204→214 |
+| 39 | `aacc20f`（C-10 M4） | **config/state schema 2 + 迁移**；**修复 DSH 注入消息被当用户消息**（真实 38 会话 645→138 条）；204→214 |
+| 40 | **`1c8cd91`（C-10 M5）** | **取消网页自动触发 + 分流 max_tokens 500**：页面加载零 run/零 LLM；trigger 仅 manual；真实复跑此前 2 个截断会话恢复正常；214→217 |
 | 8 | 本文件 commit | README / SELFTEST 同步（§9.9 前端字段契约修复证据；用例 75） |
 
 ### 9.3 自动化测试（76 用例时点记录；C-07 后为 93 用例，见 §10）
@@ -1480,7 +1481,7 @@ README 与 manifest 版本一致: True
 
 ```
 $ python3 -m unittest discover -s tests
-Ran 214 tests in 5.206s
+Ran 217 tests in 5.228s
 OK
 $ python3 run.py --data-dir <tmp> extract status     # 关闭/同意/配置/待审/水位
 $ python3 run.py --data-dir <tmp> extract config --base-url ... --model ...
@@ -1745,3 +1746,25 @@ $ python3 run.py --data-dir /tmp/fasti-realtest extract
   queue/show/approve/reject；旧 runs 可读；新 runs/candidate schema2 字段；混合 source.kind
   只计 user、缺失 source 排除、first 跳过注入。
 - **未做**：前端去自动触发 / AC-18-10 反向断言（M5）。
+
+### 13.13 C-10 M5：取消网页自动触发 + 分流截断修复（已交付，等待整体 QA）
+
+- **分流 max_tokens 200→500**：`{decision,reason≤120字}` + JSON 包装在真实中文输出下 200 会
+  卡边界截断。真实复跑此前两个 `EXTRACT_LLM_TRUNCATED` 会话：
+  ```
+  为PMS项目创建子代理角色（71 条用户消息）→ decision=extract
+    reason=用户正在推进 PMS 项目，有设计说明书，并与助手讨论设计思路；71 轮对话可能包含项目
+           目标、方案与进展，可产出项目 summary。 prompt_version=c10-divert-v2
+  代理模式PPT讲解大纲设计（1 条真实用户消息）→ decision=extract
+    reason=用户正在准备面向他人的代理模式PPT讲解，属当前工作/学习事项，可提取1条任务背景。
+  两个会话均不再报 TRUNCATED。
+  ```
+- **前端去自动触发（AC-18-10/11）**：删除 `maybeAutoTrigger`、localStorage 节流键
+  `fasti-extract-last-trigger`、`web_open` 调用；页面加载只 GET status/candidates/runs；
+  唯一 POST `/api/extract/run` 在「立即提取」按钮且 `trigger=manual`；index.html 无自动触发开关。
+- **服务端**：`web_extract` 的 trigger 仅接受 `manual`，其他值 400 `USAGE_INVALID_ARGUMENT`，
+  不发起任何 LLM 调用。
+- **测试（214→217）**：静态断言 JS 无 auto_trigger/localStorage/web_open 且只有一处 run 调用；
+  动态页面加载（/、extract.js、app.js、status、candidates、runs）mock LLM 零请求、水位不变、
+  无候选；manual run 正常调用 LLM；web_open 被 400 拒绝且零 LLM 调用。
+- **未覆盖**：无（M5 范围内）；整体 C-10 待 QA 全量验收。
