@@ -1,4 +1,4 @@
-"""读取模型（ReadModel）：事件折叠的产物，纯内存对象（v2 = UUIDv7 标识方案）。
+"""读取模型（ReadModel）：事件折叠的产物，纯内存对象（v3 = UUIDv7 + 秒级生效时间 + C-08 审计）。
 
 设计约束（architecture.md §1.5 / ADR-002/008/023）：
 - 本模块不读时钟、不读网络、不读文件、不读上一次派生结果；
@@ -12,7 +12,7 @@ from . import clock
 
 
 class ReadModel(object):
-    """事件 → 当前状态。字段名与 api-spec domain_model（v2）一致。"""
+    """事件 → 当前状态。字段名与 api-spec domain_model（当前格式）一致。"""
 
     def __init__(self):
         self.events = []

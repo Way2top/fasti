@@ -3,7 +3,6 @@
 import os
 
 from . import constants
-from . import profile as profile_module
 from . import render
 from . import store
 
@@ -149,9 +148,3 @@ def build_status(data_dir, model, raw_events):
         "host_sizes": sizes,
         "warnings": warnings,
     }
-
-
-def profile_text_for_status(model, category_id=None, trace=False):
-    """便捷：状态/页面需要的画像文本（核心层渲染）。"""
-    return profile_module.render_profile_text(
-        profile_module.build_profile_view(model, category_id=category_id, trace=trace))

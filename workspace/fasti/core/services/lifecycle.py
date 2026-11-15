@@ -1,7 +1,7 @@
-"""C0s 生命周期应用服务（v2）：init / status / export / import / install-host。
+"""C0s 生命周期应用服务（v3）：init / status / export / import / install-host。
 
-唯一写入 v2 格式（format_version 2）的地方之一；v1 数据加载由 `_shared._load_model` 的
-格式门拒绝（STORE_FORMAT_UNSUPPORTED，ADR-024）。
+唯一写入当前格式（`constants.FORMAT_VERSION`）的地方之一；更早格式的数据加载由
+`_shared._load_model` 的格式门拒绝（STORE_FORMAT_UNSUPPORTED，ADR-024 / ADR-026）。
 """
 
 import os

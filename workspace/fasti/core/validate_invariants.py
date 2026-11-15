@@ -1,4 +1,4 @@
-"""领域不变量校验（v2 = UUIDv7 标识方案）。
+"""领域不变量校验（当前格式 = UUIDv7 + 秒级生效时间 + C-08 审计字段）。
 
 SQL 表达力之外的部分（ADR-009 的两层校验中的第二层）：
 引用完整性、UUIDv7 形态、修订连续性（(fact_id, seq)）、演进链、派生字段一致性、
@@ -21,7 +21,7 @@ def _is_category_key(value):
 def check_invariants(model):
     problems = []
 
-    # 1) 事件序列：从 1 连续、首事件 store_initialized、唯一、format_version == 2
+    # 1) 事件序列：从 1 连续、首事件 store_initialized、唯一、format_version == 当前格式
     seqs = [event.get("seq") for event in model.events]
     if seqs and seqs != list(range(1, len(seqs) + 1)):
         problems.append("事件 seq 不连续：期望 1..%d" % len(seqs))
@@ -135,7 +135,7 @@ def check_invariants(model):
             if revision["seq"] > 1 and revision.get("revision_type") != "correct":
                 problems.append("事实 %s 的后续修订必须是 correct" % fact["fact_id"])
             if "revision_id" in revision:
-                problems.append("v2 修订不得有 revision_id（应使用 (fact_id, seq)）")
+                problems.append("修订不得有 revision_id（应使用 (fact_id, seq)）")
             if not isinstance(revision.get("content"), str) or not revision["content"]:
                 problems.append("修订内容为空：%s#%s" % (fact["fact_id"], revision["seq"]))
         latest = revisions[-1]

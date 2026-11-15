@@ -1,4 +1,4 @@
-"""内存 SQLite 声明式约束校验（v2 读取模型，schema_version 2）。
+"""内存 SQLite 声明式约束校验（当前读取模型，schema_version 3）。
 
 把折叠结果载入 `:memory:` SQLite 执行 `database-schema.sql`（随包副本，与
 artifacts/database-schema.sql 逐字节相同），用 PK/FK/UNIQUE/CHECK 做校验；

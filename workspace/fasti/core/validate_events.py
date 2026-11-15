@@ -1,7 +1,7 @@
-"""事件记录结构校验（v3 / format_version 3）：UUIDv7 + 秒级时间 + C-08 确认字段。
+"""事件记录结构校验（format_version = constants.FORMAT_VERSION）：UUIDv7 + 秒级时间 + C-08 确认字段。
 
 供导入流水线第 2 步使用：结构不合法 ⇒ IMPORT_INVALID_RECORD（不在此抛错，返回问题列表）。
-字段契约见 api-spec file_formats.events_jsonl（v2）。
+字段契约见 api-spec file_formats.events_jsonl（当前格式）。
 """
 
 import re
@@ -121,7 +121,7 @@ def _validate_value(spec, value, path, problems):
             problems.append({"field": path, "message": "取值不在 %s 内" % (spec["values"],)})
     elif kind == "const":
         if value != spec["value"]:
-            problems.append({"field": path, "message": "取值必须为 %r（v2 格式）" % (spec["value"],)})
+            problems.append({"field": path, "message": "取值必须为 %r（当前格式）" % (spec["value"],)})
     elif kind == "uuid7":
         if not ids.is_uuid7(value):
             problems.append({"field": path, "message": "应为 UUIDv7 规范形式（36 字符小写）"})

@@ -2,7 +2,7 @@
 
 - 不读时钟、不读网络、不读 dist/ 或 profile/、不依赖上一次派生结果；
 - profile_body（含「（未录入）」）与 host_body（仅含有内容的类别）由同一视图生成；
-- v2 标识：类别 slot/item 用 `category_key`（无 category_id）；line/fact 为 UUIDv7；
+- 标识：类别 slot/item 用 `category_key`（无 category_id）；line/fact 为 UUIDv7；
   修订以 `(fact_id, seq)` 定位（无 revision_id）；
 - 短 ID 只用于 `--trace` 的 CLI 文本展示（`profile/current.md` 不包含任何 ID）。
 """
