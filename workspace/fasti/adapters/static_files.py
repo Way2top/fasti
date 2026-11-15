@@ -1,6 +1,6 @@
 """网页适配器的同源静态资源（§11.3.5）：白名单 + 读取 + Content-Type。
 
-只有 3 个只读资源（页面 + 样式 + 脚本）；请求路径必须**精确命中**白名单，
+只有 4 个只读资源（页面 + 样式 + 主脚本 + 提取脚本）；请求路径必须**精确命中**白名单，
 因此不存在目录浏览与路径穿越面。所有资源均为包内文件、零外部请求。
 """
 
@@ -13,6 +13,7 @@ STATIC_FILES = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/style.css": ("style.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "application/javascript; charset=utf-8"),
+    "/extract.js": ("extract.js", "application/javascript; charset=utf-8"),
 }
 
 

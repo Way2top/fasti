@@ -153,4 +153,59 @@ def build_parser():
     install.add_argument("--mode", default="symlink", choices=["symlink", "copy"])
     install.add_argument("--project")
     install.add_argument("--dry-run", dest="dry_run", action="store_true")
+    # ---- extract（C-09 自动提取）------------------------------------------
+    extract = sub.add_parser("extract", parents=[g],
+                             help="自动提取：增量处理 DSH 会话（两段式）")
+    extract.add_argument("--dry-run", dest="dry_run", action="store_true")
+    extract.add_argument("--session-cwd", dest="session_cwd")
+    extract.add_argument("--max-messages", dest="max_messages", type=int)
+    extract.add_argument("--trigger", default="manual", choices=["manual", "web_open", "cli"])
+    extract_sub = extract.add_subparsers(dest="extract_command")
+
+    extract_sub.add_parser("status", parents=[g], help="提取总览")
+
+    config_cmd = extract_sub.add_parser("config", parents=[g], help="查看/修改提取配置")
+    config_cmd.add_argument("--base-url", dest="base_url")
+    config_cmd.add_argument("--model")
+    config_cmd.add_argument("--api-key-stdin", dest="api_key_stdin", action="store_true")
+    config_cmd.add_argument("--enable", action="store_true")
+    config_cmd.add_argument("--disable", action="store_true")
+    config_cmd.add_argument("--auto-write", dest="auto_write", action="store_true")
+    config_cmd.add_argument("--no-auto-write", dest="no_auto_write", action="store_true")
+    config_cmd.add_argument("--sensitive-filter", dest="sensitive_filter",
+                            action="store_true")
+    config_cmd.add_argument("--no-sensitive-filter", dest="no_sensitive_filter",
+                            action="store_true")
+
+    consent_cmd = extract_sub.add_parser("consent", parents=[g],
+                                         help="查看/接受一次性隐私告知")
+    consent_cmd.add_argument("--show", action="store_true")
+    consent_cmd.add_argument("--accept", action="store_true")
+    consent_cmd.add_argument("--reset", action="store_true")
+
+    queue_cmd = extract_sub.add_parser("queue", parents=[g], help="待审核候选列表")
+    queue_cmd.add_argument("--status", default="pending",
+                           choices=["pending", "approved", "rejected", "duplicate",
+                                    "dropped", "all"])
+
+    show_cmd = extract_sub.add_parser("show", parents=[g], help="候选详情")
+    show_cmd.add_argument("candidate_id")
+
+    approve_cmd = extract_sub.add_parser("approve", parents=[g], help="通过候选")
+    approve_cmd.add_argument("candidate_id")
+    approve_cmd.add_argument("--change-type", dest="change_type",
+                             choices=["new", "evolve", "correct"])
+    approve_cmd.add_argument("--content")
+    approve_cmd.add_argument("--category")
+    approve_cmd.add_argument("--valid-from", dest="valid_from")
+    approve_cmd.add_argument("--confirm-duplicate", dest="confirm_duplicate")
+    approve_cmd.add_argument("--note")
+
+    reject_cmd = extract_sub.add_parser("reject", parents=[g], help="拒绝候选")
+    reject_cmd.add_argument("candidate_id")
+    reject_cmd.add_argument("--reason")
+
+    runs_cmd = extract_sub.add_parser("runs", parents=[g], help="最近提取运行记录")
+    runs_cmd.add_argument("--limit", type=int, default=20)
+
     return parser

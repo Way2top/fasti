@@ -157,6 +157,32 @@
   </div>
 </div>
 
+
+<section>
+  <h2>自动提取 <span class="hint">从 DSH 会话识别候选；高置信可自动写入，其余在此审核</span></h2>
+  <div id="extract-status" class="small">加载中…</div>
+  <div class="row">
+    <label><input type="checkbox" id="extract-enable"> 启用提取</label>
+    <label><input type="checkbox" id="extract-auto-write"> 允许高置信自动写入</label>
+    <button type="button" id="extract-run">立即提取</button>
+    <span class="msg" id="extract-msg"></span>
+  </div>
+  <p class="small" id="extract-consent-text"></p>
+  <div class="row">
+    <label>base_url <input id="cfg-base-url" placeholder="http://127.0.0.1:11434/v1"></label>
+    <label>model <input id="cfg-model" placeholder="model 名称"></label>
+    <label>api_key <input id="cfg-api-key" type="password" placeholder="只写不回显"></label>
+    <span class="small" id="extract-key-state"></span>
+  </div>
+  <div class="row">
+    <label><input type="checkbox" id="extract-accept"> 我已阅读并接受一次性隐私告知（会话内容与相关已有事实会发送给外部 LLM，联网）</label>
+    <button type="button" id="extract-save">保存配置</button>
+  </div>
+  <h3>待审候选</h3>
+  <ul id="extract-queue"><li>加载中…</li></ul>
+</section>
+
 <script src="/app.js"></script>
+<script src="/extract.js"></script>
 </body>
 </html>

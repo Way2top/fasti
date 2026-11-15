@@ -23,6 +23,7 @@ from ..core import api
 from ..core import constants
 from ..core import errors
 from . import static_files
+from . import web_extract
 
 MAX_BODY_BYTES = 1048576
 
@@ -38,6 +39,19 @@ def http_status_for(code):
         return 400
     if code.startswith("NOT_FOUND_"):
         return 404
+    if code == "EXTRACT_CANDIDATE_NOT_FOUND":
+        return 404
+    if code == "EXTRACT_CANDIDATE_INVALID":
+        return 400
+    if code in ("EXTRACT_DISABLED", "EXTRACT_CONSENT_REQUIRED",
+                "EXTRACT_LLM_CONFIG_MISSING", "EXTRACT_LLM_CONFIG_INVALID",
+                "EXTRACT_RUN_IN_PROGRESS", "EXTRACT_CANDIDATE_ALREADY_RESOLVED"):
+        return 409
+    if code == "EXTRACT_LLM_TIMEOUT":
+        return 504
+    if code in ("EXTRACT_LLM_UNREACHABLE", "EXTRACT_LLM_HTTP_ERROR",
+                "EXTRACT_LLM_INVALID_RESPONSE", "EXTRACT_ZSTD_UNAVAILABLE"):
+        return 502
     if code.startswith("CONFLICT_") or code == "STORE_NOT_INITIALIZED":
         return 409
     if code.startswith("CORRUPT_"):
@@ -243,6 +257,8 @@ class FastiRequestHandler(BaseHTTPRequestHandler):
 
     def _dispatch_post(self, parts, body):
         data_dir = self.context["data_dir"]
+        if web_extract.dispatch_post(self, parts, body):
+            return
         if parts == ["api", "categories"]:
             name = _require_field(body, "name")
             key = body.get("key")
@@ -315,6 +331,8 @@ class FastiRequestHandler(BaseHTTPRequestHandler):
     def _route_get(self, path, query):
         data_dir = self.context["data_dir"]
         parts = [part for part in path.split("/") if part]
+        if web_extract.dispatch_get(self, parts, query):
+            return
         if parts == ["api", "health"]:
             self._ok({
                 "product": constants.APP_NAME,

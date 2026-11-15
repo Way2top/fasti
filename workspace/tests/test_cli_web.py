@@ -195,7 +195,7 @@ class TestCliAndWeb(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_web_static_assets_integrity(self):
-        for name in ("index.html", "style.css", "app.js"):
+        for name in ("index.html", "style.css", "app.js", "extract.js"):
             path = os.path.join(self.WEB_STATIC_DIR, name)
             self.assertTrue(os.path.isfile(path), name)
             text = self._static_text(name)
@@ -204,8 +204,12 @@ class TestCliAndWeb(unittest.TestCase):
         index = self._static_text("index.html")
         self.assertEqual(index.count('href="/style.css"'), 1)
         self.assertEqual(index.count('src="/app.js"'), 1)
-        for name in ("index.html", "style.css", "app.js"):
-            self.assertEqual(re.findall(r"https?://", self._static_text(name)), [], name)
+        self.assertEqual(index.count('src="/extract.js"'), 1)
+        for name in ("index.html", "style.css", "app.js", "extract.js"):
+            urls = re.findall(r"https?://[^\s\"']+", self._static_text(name))
+            external = [url for url in urls
+                        if not url.startswith(("http://127.0.0.1", "http://localhost"))]
+            self.assertEqual(external, [], name)   # 零外部请求（仅允许本机示例地址）
         # v2（C-06）起 app.js 有意更新了 category_key 语义；此处只保留结构/语法/引用守卫。
         app_js = self._static_text("app.js")
         self.assertIn("category_key", app_js)

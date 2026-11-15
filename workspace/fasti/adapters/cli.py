@@ -23,6 +23,17 @@ from .cli_cmds_content import (
     _cmd_profile_history,
     _cmd_profile_show,
 )
+from .cli_cmds_extract import (
+    _cmd_extract_approve,
+    _cmd_extract_config,
+    _cmd_extract_consent,
+    _cmd_extract_queue,
+    _cmd_extract_reject,
+    _cmd_extract_run,
+    _cmd_extract_runs,
+    _cmd_extract_show,
+    _cmd_extract_status,
+)
 from .cli_cmds_store import (
     _cmd_export,
     _cmd_import,
@@ -84,6 +95,21 @@ def _dispatch(args):
         return _cmd_web(args, data_dir)
     if command == "install-host":
         return _cmd_install_host(args, data_dir)
+    if command == "extract":
+        extract_command = getattr(args, "extract_command", None)
+        if extract_command in (None, ""):
+            return _cmd_extract_run(args, data_dir)
+        handlers = {
+            "status": _cmd_extract_status,
+            "config": _cmd_extract_config,
+            "consent": _cmd_extract_consent,
+            "queue": _cmd_extract_queue,
+            "show": _cmd_extract_show,
+            "approve": _cmd_extract_approve,
+            "reject": _cmd_extract_reject,
+            "runs": _cmd_extract_runs,
+        }
+        return handlers[extract_command](args, data_dir)
     raise errors.make("USAGE_INVALID_ARGUMENT", "未知命令：%r" % (command,))
 
 
@@ -95,6 +121,9 @@ def _command_id_from_args(args):
         return "category.%s" % (getattr(args, "category_command", "") or "")
     if command == "profile":
         return "profile.%s" % (getattr(args, "profile_command", "") or "")
+    if command == "extract":
+        sub = getattr(args, "extract_command", "") or ""
+        return "extract.%s" % sub if sub else "extract"
     return command or ""
 
 
