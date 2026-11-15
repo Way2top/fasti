@@ -1,8 +1,7 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
+  push:            # 所有分支都跑（feature 分支也要有 CI 保护）
   pull_request:
     branches: [main]
   workflow_dispatch:
