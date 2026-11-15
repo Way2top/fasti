@@ -132,6 +132,7 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
     start_monotonic = time.time()
     run_id = ids.new_uuid7()
     started_at = clock.now_recorded_at()
+    extract_llm.reset_usage_totals()
     counters = _empty_counters()
     counters.update({"sessions_entered_extraction": 0, "divert_extract": 0,
                      "divert_skip": 0, "divert_failed": 0})
@@ -297,7 +298,8 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
                             "extraction": constants.EXTRACT_PROMPT_EXTRACTION,
                             "judgment": constants.EXTRACT_PROMPT_JUDGMENT},
                 "prompt_sha256": __import__("hashlib").sha256(
-                    constants.EXTRACT_PROMPT_EXTRACTION.encode("utf-8")).hexdigest()},
+                    constants.EXTRACT_PROMPT_EXTRACTION.encode("utf-8")).hexdigest(),
+                "usage": extract_llm.usage_totals()},
         "watermark_rebuilt": bool(rebuilt),
         "sessions": sessions_summary,
         "errors": run_errors,
@@ -323,8 +325,9 @@ def _decide_session(data_dir, model, cfg, session_id, prepared, run_id, dry_run,
         constants.EXTRACT_JUDGE_TOKENS_CAP,
         constants.EXTRACT_JUDGE_TOKENS_BASE
         + constants.EXTRACT_JUDGE_TOKENS_PER_CANDIDATE * len(prepared))
-    judgments_content = extract_llm.chat_completion(cfg, judge_payload,
-                                                    max_tokens=judge_tokens)
+    judgments_content = extract_llm.chat_completion(
+        cfg, judge_payload, max_tokens=judge_tokens,
+        disable_thinking=constants.EXTRACT_JUDGE_DISABLE_THINKING)
     judgments = extract_llm.validate_judgment_result(
         judgments_content, {item["candidate_id"] for item in prepared},
         {item["candidate_id"]: per_candidate[item["candidate_id"]]["recalled_fact_ids"]

@@ -93,6 +93,31 @@ class TestLlmClient(unittest.TestCase):
             extract_llm.chat_completion(CFG, [{"role": "user", "content": "hi"}])
         self.assertEqual(ctx.exception.code, "EXTRACT_LLM_TIMEOUT")
 
+    def test_thinking_disable_payload_and_usage(self):
+        seen = {}
+
+        class Transport(object):
+            def __call__(self, url, headers, body, timeout):
+                payload = json.loads(body.decode("utf-8"))
+                seen.update(payload)
+                return 200, json.dumps({"choices": [{"finish_reason": "stop",
+                                                     "message": {"content": "{}"}}],
+                                        "usage": {"prompt_tokens": 10,
+                                                  "completion_tokens": 30,
+                                                  "completion_tokens_details": {
+                                                      "reasoning_tokens": 12}}}).encode()
+        extract_llm.set_transport(Transport())
+        extract_llm.reset_usage_totals()
+        extract_llm.chat_completion(CFG, [{"role": "user", "content": "x"}],
+                                    disable_thinking=True)
+        self.assertEqual(seen["thinking"], {"type": "disabled"})   # 必须是对象
+        self.assertEqual(extract_llm.last_usage()["reasoning_tokens"], 12)
+        self.assertEqual(extract_llm.usage_totals()["completion_tokens"], 30)
+        self.assertEqual(extract_llm.usage_totals()["reasoning_tokens"], 12)
+        seen.clear()
+        extract_llm.chat_completion(CFG, [{"role": "user", "content": "x"}])
+        self.assertNotIn("thinking", seen)                         # 默认不发送
+
     def test_truncation_is_dedicated_error(self):
         envelope = json.dumps({"choices": [{"finish_reason": "length", "message": {
             "content": '{"judgments":[{"candidate_id":"cand-'}}]}).encode()

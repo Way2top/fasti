@@ -94,8 +94,42 @@ def _base_url(cfg):
     return (cfg.get("llm", {}).get("base_url") or "").rstrip("/")
 
 
-def chat_completion(cfg, messages, max_tokens=800):
-    """调用 LLM 并返回 assistant content 文本；失败抛 EXTRACT_LLM_*。"""
+_USAGE_TOTALS = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0,
+                 "reasoning_tokens": 0}
+_LAST_USAGE = {}
+
+
+def reset_usage_totals():
+    for key in _USAGE_TOTALS:
+        _USAGE_TOTALS[key] = 0
+
+
+def usage_totals():
+    return dict(_USAGE_TOTALS)
+
+
+def last_usage():
+    return dict(_LAST_USAGE)
+
+
+def _record_usage(envelope):
+    usage = envelope.get("usage") if isinstance(envelope, dict) else None
+    if not isinstance(usage, dict):
+        return
+    details = usage.get("completion_tokens_details") or {}
+    values = {
+        "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+        "completion_tokens": int(usage.get("completion_tokens") or 0),
+        "reasoning_tokens": int(details.get("reasoning_tokens") or 0),
+    }
+    _LAST_USAGE.clear(); _LAST_USAGE.update(values)
+    _USAGE_TOTALS["calls"] += 1
+    for key, value in values.items():
+        _USAGE_TOTALS[key] += value
+
+
+def chat_completion(cfg, messages, max_tokens=800, disable_thinking=False):
+    """调用 LLM 并返回 assistant content 文本；disable_thinking ⇒ thinking 对象关闭。"""
     llm = cfg.get("llm") or {}
     base_url = _base_url(cfg)
     payload = {
@@ -107,6 +141,8 @@ def chat_completion(cfg, messages, max_tokens=800):
     }
     if llm.get("json_mode", True):
         payload["response_format"] = {"type": "json_object"}
+    if disable_thinking:
+        payload["thinking"] = dict(constants.EXTRACT_THINKING_DISABLED_PAYLOAD)
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     headers = {
         "Content-Type": "application/json",
@@ -177,6 +213,7 @@ def _extract_content(raw):
         content = choice["message"]["content"]
         if not isinstance(content, str):
             raise ValueError("content 不是字符串")
+        _record_usage(envelope)
     except (ValueError, KeyError, IndexError, TypeError, UnicodeDecodeError) as exc:
         raise errors.make("EXTRACT_LLM_INVALID_RESPONSE",
                           "LLM 响应无法解析：%s" % exc.__class__.__name__)

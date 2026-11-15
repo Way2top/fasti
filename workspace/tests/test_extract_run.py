@@ -271,8 +271,8 @@ class TestExtractRuntime(ExtractRuntimeBase):
                         if "可用类别" in item["messages"][0]["content"]][0]
         judge_call = [item for item in mock.requests
                       if "判定" in item["messages"][0]["content"]][0]
-        self.assertEqual(extract_call["max_tokens"], 1500 + 600 * 3)
-        self.assertEqual(judge_call["max_tokens"], 600 + 400 * 3)
+        self.assertEqual(extract_call["max_tokens"], 6000 + 1000 * 3)
+        self.assertEqual(judge_call["max_tokens"], 800 + 500 * 3)
         self.assertEqual(run["counters"]["candidates_created"], 3)
 
     def test_judge_truncation_fails_with_dedicated_code(self):
