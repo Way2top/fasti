@@ -87,8 +87,8 @@
 | ST-48 | AC-13-1~13-5（防呆） | `node --check fasti/adapters/web_static/app.js` + 断言 IIFE 首尾行 | 修复 R-F1 后 **exit 0**（修复前 `SyntaxError: Unexpected token '}'`，exit 1）；断言首行 `(function () {`、次行 `"use strict";`、倒数第二行 `})();` | ✅ |
 | ST-49 | 静态资源完整性（防呆） | 检查 `web_static/` 三文件存在/非空/单末尾 LF、`index.html` 仅同源引用、零外部 URL、与基线内联内容 sha256 一致 | 全部通过；`app.js` 内容 sha256 `0fb916a6…`、`style.css` 内容 sha256 `d6e0c406…` 与 `git show refactor-baseline:…/index.html` 的内联内容**逐字节相同** | ✅ |
 
-**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **185 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
-自动化测试：`Ran 185 tests … OK`（见 §4.1 与 §13）。
+**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **194 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
+自动化测试：`Ran 194 tests … OK`（见 §4.1 与 §13）。
 > 注：下表 ST-01~ST-47 中出现的 `fact-0001` / `line-0001` / `cat-0002` 为 **v1（序号方案）历史记录**；C-06 迁移后同一行为以 UUIDv7 + 短前缀复现，见 §9。
 
 ---
@@ -99,9 +99,9 @@
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests -v
-…（185 个用例，全 ok）
+…（194 个用例，全 ok）
 ----------------------------------------------------------------------
-Ran 185 tests in 4.400s
+Ran 194 tests in 3.957s
 
 OK
 ```
@@ -308,7 +308,7 @@ python3 -V                     # 期望 3.9+（实测 3.13.3）
 python3 -c "import sqlite3; print(sqlite3.sqlite_version)"   # 期望 >= 3.38（需 JSON1）
 ```
 
-### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，185 用例）
+### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，194 用例）
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -693,7 +693,8 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 | 32 | **`d3c7404`** | **真实 LLM 阻断修复**：A 段 prompt 注入启用类别清单 + display_name 容错映射 + 丢弃原因摘要（178→181） |
 | 33 | `dede67f` | SELFTEST 记录真实联调修复与手工冒烟步骤 |
 | 34 | **`f24bbe6`** | **真实 LLM 判定段截断修复**：动态 max_tokens（400+300×消息/候选，封顶 3000/4000）、`finish_reason=length` ⇒ `EXTRACT_LLM_TRUNCATED`、JSON 容错解析（181→185） |
-| 35 | 本文件 commit | SELFTEST 记录真实 API 连续 5 次稳定证据 |
+| 35 | `e1ae01e` | SELFTEST 记录真实 API 连续 5 次稳定证据 |
+| 36 | **本 commit（C-10 M1）** | **第 0 层会话分流**：session/title → divert_input（provider 标题优先、首条消息兜底、200/300 截断）、`extract_divert.py`（c10-divert-v1，严格 JSON）、运行接入（skip 推进水位/失败不推进且不中断、逐会话记录）；185→194 |
 | 8 | 本文件 commit | README / SELFTEST 同步（§9.9 前端字段契约修复证据；用例 75） |
 
 ### 9.3 自动化测试（76 用例时点记录；C-07 后为 93 用例，见 §10）
@@ -1476,7 +1477,7 @@ README 与 manifest 版本一致: True
 
 ```
 $ python3 -m unittest discover -s tests
-Ran 185 tests in 4.400s
+Ran 194 tests in 3.957s
 OK
 $ python3 run.py --data-dir <tmp> extract status     # 关闭/同意/配置/待审/水位
 $ python3 run.py --data-dir <tmp> extract config --base-url ... --model ...
@@ -1619,3 +1620,31 @@ $ python3 run.py --data-dir /tmp/fasti-realtest extract
 - **未触碰用户 `~/.fasti`**；真实数据迁移（v3→v4）由 Lead/用户执行 `scripts/migrate_v3_to_v4.py`（先备份 + dry-run）。
 - **等待 QA 独立验证**：重点 AC-16-1~14 / AC-17-1~5 / AC-18-1~9；两段 prompt 断言、auto_write 决策矩阵、
   召回 full/retrieval、水位幂等/重建、隐私打码与 runs 无原文、v3→v4 纯加性迁移。
+
+### 13.9 C-10 M1：第 0 层会话分流（已交付，等待 QA/Lead 验证）
+
+> 范围仅 M1；抽取 prompt 收紧、每会话上限、config schema2、state schema2、前端去自动触发属后续里程碑。
+
+- **session_source**：同一次解析读取全部 `session/title`；取最后一条 `source.kind=provider` 且非空；
+  无 provider ⇒ `title=null`（不拿 fallback 冒充），`title_source=first_message` 用首条用户消息兜底；
+  标题截断 200 字、首条消息截断 300 字（`…[TRUNCATED]`）；`divert_input` 含
+  `{title,title_source,title_truncated,first_user_message,first_message_truncated,
+  user_message_count,title_kinds_seen}`。
+- **extract_divert.py（c10-divert-v1）**：输入仅标题/标题来源/首条消息/消息数（发送前打码），
+  无完整会话/助手/工具/路径/session_id/库数据；输出严格 `{decision,reason}`，非法结构/枚举 ⇒
+  `EXTRACT_LLM_INVALID_RESPONSE`。
+- **运行接入**：extract_run 在「有新消息」后先分流；`skip` ⇒ 跳过抽取但**推进水位**并记录
+  decision/reason/信号来源/截断/消息数；`extract` ⇒ 走既有抽取流程（逻辑未改）；
+  **分流失败 ⇒ 保守 skip、不推进水位、记录 error_code、继续其他会话、下轮重试**。
+- **实测（脱敏）分流 prompt user 段**：
+  ```
+  {"title": "C++ 项目排障记录", "title_source": "provider",
+   "first_user_message": "pnpm build 报错怎么修？", "user_message_count": 9}
+  ```
+- **skip 记录示例**（mock）：`decision=skip`、`reason="纯技术排障，无个人信息"`、
+  `title_source=provider`、`user_message_count=9`；该会话水位推进，第二次运行不再处理。
+- **测试（185→194，新增 9 条）**：标题三夹具（provider/fallback/无标题）、200/300 截断标记、
+  分流 prompt 仅四字段且不含事实/fact_id/session_id/路径/助手消息、分流校验严格、
+  三 prompt 路由分开断言、skip 推进水位且不产候选、分流失败不推进+其他会话继续+下轮重试。
+- **未做/未覆盖**：真实 LLM 分流（M1 用 mock；真实会话统计留待后续里程碑）、抽取收紧/上限/
+  config/state/前端自动触发删除（明确不做）。
