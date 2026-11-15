@@ -87,8 +87,8 @@
 | ST-48 | AC-13-1~13-5（防呆） | `node --check fasti/adapters/web_static/app.js` + 断言 IIFE 首尾行 | 修复 R-F1 后 **exit 0**（修复前 `SyntaxError: Unexpected token '}'`，exit 1）；断言首行 `(function () {`、次行 `"use strict";`、倒数第二行 `})();` | ✅ |
 | ST-49 | 静态资源完整性（防呆） | 检查 `web_static/` 三文件存在/非空/单末尾 LF、`index.html` 仅同源引用、零外部 URL、与基线内联内容 sha256 一致 | 全部通过；`app.js` 内容 sha256 `0fb916a6…`、`style.css` 内容 sha256 `d6e0c406…` 与 `git show refactor-baseline:…/index.html` 的内联内容**逐字节相同** | ✅ |
 
-**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **178 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
-自动化测试：`Ran 178 tests … OK`（见 §4.1 与 §13）。
+**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **181 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
+自动化测试：`Ran 181 tests … OK`（见 §4.1 与 §13）。
 > 注：下表 ST-01~ST-47 中出现的 `fact-0001` / `line-0001` / `cat-0002` 为 **v1（序号方案）历史记录**；C-06 迁移后同一行为以 UUIDv7 + 短前缀复现，见 §9。
 
 ---
@@ -99,9 +99,9 @@
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests -v
-…（178 个用例，全 ok）
+…（181 个用例，全 ok）
 ----------------------------------------------------------------------
-Ran 178 tests in 3.938s
+Ran 181 tests in 4.047s
 
 OK
 ```
@@ -308,7 +308,7 @@ python3 -V                     # 期望 3.9+（实测 3.13.3）
 python3 -c "import sqlite3; print(sqlite3.sqlite_version)"   # 期望 >= 3.38（需 JSON1）
 ```
 
-### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，178 用例）
+### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，181 用例）
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -689,7 +689,9 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 | 28 | `f541ffb` | QA 修复：迁移指引动态生成并覆盖 v1/v2/v3→v4（FAIL-09-K）+ verify schema_version 动态 |
 | 29 | `dc12ae1` | QA 修复：候选详情召回明细/原因码/目标事实 + 水位重建提示（AC-16-2/11/17/9） |
 | 30 | `4bfbc58` | QA 修复：页面自动触发（节流）+ 队列证据/冲突标记 + 编辑后通过（AC-16-1/17-1/17-5） |
-| 31 | 本文件 commit | SELFTEST 记录 QA 复验修复与实测输出 |
+| 31 | `14cc921` | SELFTEST 记录 QA 复验修复与实测输出 |
+| 32 | **`d3c7404`** | **真实 LLM 阻断修复**：A 段 prompt 注入启用类别清单 + display_name 容错映射 + 丢弃原因摘要（178→181） |
+| 33 | 本文件 commit | SELFTEST 记录真实联调修复与手工冒烟步骤 |
 | 8 | 本文件 commit | README / SELFTEST 同步（§9.9 前端字段契约修复证据；用例 75） |
 
 ### 9.3 自动化测试（76 用例时点记录；C-07 后为 93 用例，见 §10）
@@ -1445,7 +1447,7 @@ README 与 manifest 版本一致: True
 | M6 | `2a79213` | CLI 9 命令、web `/api/extract/*` 9 端点、`web_static/extract.js` 审核 UI + 静态白名单 4 条 |
 | M7 | `fc2b758` | v3→v4 纯加性迁移测试（dry-run/幂等/旧格式拒绝/派生文本 sha256 不变） |
 
-测试 **116 → 178**（新增 62 条；含 QA 展示层修复 5 条）：M1 12 / M2 8 / M3 9 / M4 5 / M5 12 / M6 6 / M7 5。
+测试 **116 → 181**（新增 65 条；含 QA 展示层修复 5 条 + 真实 LLM prompt/映射修复 3 条）：M1 12 / M2 8 / M3 9 / M4 5 / M5 12 / M6 6 / M7 5。
 
 ### 13.2 关键边界实测（mock LLM，无外部调用）
 
@@ -1472,7 +1474,7 @@ README 与 manifest 版本一致: True
 
 ```
 $ python3 -m unittest discover -s tests
-Ran 178 tests in 3.938s
+Ran 181 tests in 4.047s
 OK
 $ python3 run.py --data-dir <tmp> extract status     # 关闭/同意/配置/待审/水位
 $ python3 run.py --data-dir <tmp> extract config --base-url ... --model ...
@@ -1533,7 +1535,44 @@ run 端点，失败提示不阻塞其它面板。
         v3→v4 运行 scripts/migrate_v3_to_v4.py；迁移后重试（当前支持 format_version=4）
 ```
 
-### 13.6 交付声明
+### 13.6 真实 LLM 联调阻断修复（2026-11-15）
+
+**现象（Lead 真实 DeepSeek 复现）**：真实 API 下 `fasti extract` 处理 2 消息、候选 0、
+`dropped_invalid=4`；LLM 自拟中文类别（学习与技能/宠物/技术栈），A 段 prompt 只写「映射到
+给定类别之一」却**未给类别清单**。
+
+**修复**：
+1. A 段 system 注入**启用类别 schema 清单**（`key / 显示名`，仅 enabled；不含任何 fact/召回数据）；
+2. `resolve_category`：精确 key → 精确 display_name（唯一）→ 丢弃并计入
+   `drop_reasons.invalid_category_key`；
+3. 可诊断性：`counters.drop_reasons{invalid_candidate_structure, invalid_category_key,
+   invalid_evidence}`（不含原文），CLI `extract` 摘要与 `extract runs` 可见；
+4. 测试：A 段含类别清单但仍不含 fact_id/召回/事实内容；display_name「技术背景」→ tech；
+   非法 key「学习与技能」→ 丢弃+原因计数。
+
+**修复后真实 DeepSeek 联调（`/tmp/fasti-realtest` + `/tmp/fake-dsh`，临时环境，未触碰用户 store）**：
+```
+$ python3 run.py --data-dir /tmp/fasti-realtest extract
+提取完成：处理 1 会话 / 2 消息；候选 3（自动写入 0，待审核 3）；召回模式 full（75B，截断=否）
+提示：检测到水位缺失/损坏，已从事实证据重建水位（watermark_rebuilt=true）
+
+真实候选（全部 category_key 合法，无丢弃）：
+  养了一只猫，名字叫年糕                 category_key=basics  extraction=0.95  review/auto_write_disabled
+  最近开始学习 Rust                      category_key=tech    extraction=0.85  review/auto_write_disabled
+  主力编程语言已换成 C++，Python 只是偶尔使用  category_key=tech    extraction=0.90  review/relation_unverified
+候选总数 3；dropped_invalid=0；运行记录 ok（1 会话/2 消息/3 候选/0 自动写/3 待审）
+
+修复前（Lead 复现）：候选 0；dropped_invalid=4；LLM notes「未提供类别列表，类别 key 按语义自拟」
+```
+
+**手工冒烟步骤（SELFTEST 固定记录，CI/全 mock 测试无法覆盖）**：
+1. 临时 store + 伪造 `dsh_home` 会话（真实 DSH v4 格式），`extract config/consent/enable` 指向真实
+   OpenAI 兼容端点（key 只走 stdin/env/0600 config，**不得输出**）；
+2. `fasti extract` → 断言候选 category_key 均 ∈ 启用类别、`dropped_invalid` 与 drop_reasons 可解释；
+3. `fasti extract queue --json` 目视检查候选内容/类别/决策；`extract runs` 检查无原文/密钥；
+4. **不**在 `~/.fasti` 上执行；真实数据迁移/启用由 Lead/用户操作。
+
+### 13.7 交付声明
 
 - 全部实现位于 `workspace/`；`artifacts/`、`briefs/` 未修改；**format 4 / schema 4 / contract 2.0.0**。
 - **未触碰用户 `~/.fasti`**；真实数据迁移（v3→v4）由 Lead/用户执行 `scripts/migrate_v3_to_v4.py`（先备份 + dry-run）。
