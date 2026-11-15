@@ -17,6 +17,8 @@ def _cmd_extract_run(args, data_dir):
                counters["candidates_created"], counters["auto_written"],
                counters["queued"], recall["mode"], recall["corpus_bytes"],
                "是" if recall["truncated"] else "否"))
+    if run.get("watermark_rebuilt"):
+        text += "\n提示：检测到水位缺失/损坏，已从事实证据重建水位（watermark_rebuilt=true）"
     _emit("extract", run, text)
     return 0
 
@@ -152,6 +154,26 @@ def _cmd_extract_show(args, data_dir):
         "决策：%s / %s" % ((candidate.get("decision") or {}).get("action"),
                           (candidate.get("decision") or {}).get("reason_code")),
     ]
+    recall = candidate.get("recall") or {}
+    if result.get("recall_details"):
+        lines.append("召回事实明细（mode=%s，corpus=%sB，truncated=%s）："
+                     % (recall.get("mode"), recall.get("corpus_bytes"),
+                        recall.get("truncated")))
+        for item in result["recall_details"]:
+            content = item["content"]
+            if len(content) > 80:
+                content = content[:80] + "…"
+            lines.append("  - %s | %s%s | %s | %s | 原因：%s" % (
+                api.short_id(item["fact_id"]), item["category_key"],
+                "|关闭" if item.get("disabled") else "", item["kind"], content,
+                ",".join(item.get("reasons") or []) or "-"))
+    if result.get("target_fact"):
+        item = result["target_fact"]
+        content = item["content"]
+        if len(content) > 120:
+            content = content[:120] + "…"
+        lines.append("目标事实（update/conflict）：%s | %s | %s"
+                     % (api.short_id(item["fact_id"]), item["category_key"], content))
     for preview in result.get("evidence_preview") or []:
         lines.append("证据 %s（#%s）：%s"
                      % (preview["message_id"], preview["ordinal"], preview["snippet"]))

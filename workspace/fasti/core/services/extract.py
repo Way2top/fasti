@@ -99,7 +99,50 @@ def show_extract_candidate(data_dir, candidate_id):
             break
     except errors.CoreError:
         preview = []
-    return {"candidate": candidate, "evidence_preview": preview}
+    recall_details = []
+    target_fact = None
+    try:
+        _, _, model = _load_model(data_dir)
+        recall = candidate.get("recall") or {}
+        reasons = recall.get("reasons") or {}
+        seen = []
+        for fact_id in (recall.get("recalled_fact_ids") or []):
+            seen.append((fact_id, "current"))
+        for fact_id in (recall.get("historical_fact_ids") or []):
+            seen.append((fact_id, "historical"))
+        for fact_id, kind in seen:
+            fact = model.fact(fact_id)
+            if fact is None:
+                continue
+            line = model.lines[fact["line_id"]]
+            category = model.category(line["category_key"])
+            recall_details.append({
+                "fact_id": fact["fact_id"],
+                "category_key": line["category_key"],
+                "content": fact["content"],
+                "kind": kind,
+                "disabled": bool(category and not category["enabled"]),
+                "reasons": list(reasons.get(fact_id) or []),
+            })
+        target_id = (candidate.get("relation") or {}).get("target_fact_id") \
+            or candidate.get("target_fact_id")
+        if target_id:
+            fact = model.fact(target_id)
+            if fact is not None:
+                line = model.lines[fact["line_id"]]
+                category = model.category(line["category_key"])
+                target_fact = {
+                    "fact_id": fact["fact_id"],
+                    "category_key": line["category_key"],
+                    "content": fact["content"],
+                    "kind": "current",
+                    "disabled": bool(category and not category["enabled"]),
+                    "reasons": list((reasons or {}).get(target_id) or []),
+                }
+    except errors.CoreError:
+        recall_details, target_fact = [], None
+    return {"candidate": candidate, "evidence_preview": preview,
+            "recall_details": recall_details, "target_fact": target_fact}
 
 
 def list_extract_runs(data_dir, limit=20):

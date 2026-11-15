@@ -172,6 +172,29 @@ class TestExtractRuntime(ExtractRuntimeBase):
         revised = api.show_fact(self.data_dir, base["fact_id"])
         self.assertEqual(revised["fact"]["valid_to"], result["fact"]["valid_from"])
 
+    def test_candidate_detail_recall_and_target(self):
+        base = api.add_fact(self.data_dir, "tech", "主力语言：Python", "2025-01")["fact"]
+        _write_session(self.dsh_home, ["我的主力语言现在改成 Rust 了"])
+        self._enable(auto_write=True)
+        content = "我的主力语言现在改成 Rust 了"
+        candidate_id = extract_state.candidate_id_for(SESSION_ID, ["m1"], content,
+                                                      "tech", "new")
+        extraction = {"candidates": [self._candidate_payload(content)], "notes": ""}
+        judgments = {"judgments": [self._judgment(candidate_id, "update", 0.9,
+                                                  base["fact_id"])], "notes": ""}
+        self._run(extraction, judgments)
+        detail = api.show_extract_candidate(self.data_dir, candidate_id)
+        self.assertEqual(detail["candidate"]["candidate_id"], candidate_id)
+        details = detail["recall_details"]
+        self.assertTrue(details)
+        first = [item for item in details if item["fact_id"] == base["fact_id"]][0]
+        self.assertEqual(first["kind"], "current")
+        self.assertEqual(first["category_key"], "tech")
+        self.assertTrue(first["reasons"])          # 命中原因码（cjk/full_mode/...）
+        self.assertTrue(detail["target_fact"])
+        self.assertEqual(detail["target_fact"]["content"], "主力语言：Python")
+        self.assertEqual(detail["target_fact"]["fact_id"], base["fact_id"])
+
     def test_system_similar_blocks_llm_new(self):
         api.add_fact(self.data_dir, "basics", "老家湖北黄冈", "2025-01")
         _write_session(self.dsh_home, ["我出生在湖北黄冈"])
