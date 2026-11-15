@@ -8,6 +8,7 @@ from .. import extract_privacy
 from .. import extract_state
 from .. import store
 from . import facts
+from ._shared import _load_model
 
 
 def _extraction_payload(candidate, mode, run_id, reviewed_by_user):
@@ -111,3 +112,40 @@ def resolve_extract_candidate(data_dir, candidate_id, action, patch=None,
     extract_state.update_candidate(data_dir, candidate)
     return {"candidate": candidate, "fact": result["fact"],
             "change_type": change_type, "warnings": warnings}
+
+
+def build_candidate_details(data_dir, candidate):
+    """候选详情：召回事实明细（短ID/类别/内容/current|historical/关闭/原因码）+ 目标事实。"""
+    recall_details = []
+    target_fact = None
+    try:
+        _, _, model = _load_model(data_dir)
+        recall = candidate.get("recall") or {}
+        reasons = recall.get("reasons") or {}
+        seen = [(fact_id, "current")
+                for fact_id in (recall.get("recalled_fact_ids") or [])]
+        seen += [(fact_id, "historical")
+                 for fact_id in (recall.get("historical_fact_ids") or [])]
+        for fact_id, kind in seen:
+            detail = _fact_detail(model, fact_id, kind, reasons)
+            if detail:
+                recall_details.append(detail)
+        target_id = (candidate.get("relation") or {}).get("target_fact_id") \
+            or candidate.get("target_fact_id")
+        if target_id:
+            target_fact = _fact_detail(model, target_id, "current", reasons)
+    except Exception:  # noqa: BLE001 - 详情是展示增强，绝不阻断候选读取
+        recall_details, target_fact = [], None
+    return recall_details, target_fact
+
+
+def _fact_detail(model, fact_id, kind, reasons):
+    fact = model.fact(fact_id)
+    if fact is None:
+        return None
+    line = model.lines[fact["line_id"]]
+    category = model.category(line["category_key"])
+    return {"fact_id": fact["fact_id"], "category_key": line["category_key"],
+            "content": fact["content"], "kind": kind,
+            "disabled": bool(category and not category["enabled"]),
+            "reasons": list((reasons or {}).get(fact_id) or [])}

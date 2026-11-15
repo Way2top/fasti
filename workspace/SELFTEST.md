@@ -1479,7 +1479,7 @@ $ python3 run.py --data-dir <tmp> extract config --base-url ... --model ...
 $ python3 run.py --data-dir <tmp> extract consent --show --accept
 $ python3 run.py --data-dir <tmp> extract queue / runs
 $ python3 run.py verify --deep                       # 7/7 PASS（既有 P0 检查不变）
-文件规模：82 文件 / 14060 行；无文件 >500（web.py 470+18=488、extract.py 469、app.js 479）
+文件规模：82 文件 / 14060 行；无文件 >500（web.py 470+18=488、extract.py 456、app.js 479）
 ```
 
 ### 13.4 未覆盖项（如实说明）
