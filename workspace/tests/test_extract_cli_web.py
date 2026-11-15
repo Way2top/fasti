@@ -81,6 +81,72 @@ class TestExtractCli(BaseStoreTest):
         self.assertIn("EXTRACT_LLM_CONFIG_MISSING", missing.stderr)
         self.assertIn("llm.base_url", missing.stderr)
 
+    def test_cli_show_recall_details_and_target(self):
+        base = api.add_fact(self.data_dir, "tech", "主力语言：Python", "2025-01")["fact"]
+        candidate_id = "cand-" + "a" * 20
+        candidate = extract_state.new_candidate(
+            candidate_id, "sess-cli", ["m1"], [1], "chunk", "run-1",
+            "我的主力语言现在改成 Rust 了", "tech", "new", 0.9,
+            {"mode": "full", "corpus_bytes": 40, "current_count": 1,
+             "historical_count": 0, "recalled_fact_ids": [base["fact_id"]],
+             "historical_fact_ids": [],
+             "reasons": {base["fact_id"]: ["tier1", "same_category"]},
+             "truncated": False},
+            {"action": "review", "reason_code": "layer_mismatch"},
+            extract_state.evidence_key_for("sess-cli", ["m1"], "我的主力语言现在改成 Rust 了"),
+            relation={"llm": "update", "target_fact_id": base["fact_id"],
+                      "relation_confidence": 0.9, "rationale": "x", "unverified": False})
+        extract_state.append_candidate(self.data_dir, candidate)
+        shown = self._run("extract", "show", candidate_id)
+        self.assertEqual(shown.returncode, 0, shown.stderr)
+        out = shown.stdout
+        self.assertIn(api.short_id(base["fact_id"]), out)      # 短 ID
+        self.assertIn("tech", out)                              # 类别
+        self.assertIn("主力语言：Python", out)                  # 内容摘要
+        self.assertIn("tier1", out)                             # 命中原因码
+        self.assertIn("same_category", out)
+        self.assertIn("目标事实（update/conflict）", out)       # update 目标内容
+        self.assertIn("来源：session=sess-cli message_ids=['m1']", out)
+
+    def test_cli_watermark_rebuilt_notice(self):
+        import contextlib
+        import io
+        from unittest import mock
+        from fasti.adapters import cli_io
+        from fasti.adapters import cli_cmds_extract
+        run = {"run_id": "run-1", "watermark_rebuilt": True,
+               "counters": {"sessions_processed": 1, "messages_processed": 2,
+                            "candidates_created": 0, "auto_written": 0, "queued": 0},
+               "recall": {"mode": "full", "corpus_bytes": 0, "truncated": False}}
+        args = mock.Mock(dry_run=False, session_cwd=None, max_messages=None,
+                         trigger="manual")
+        buffer = io.StringIO()
+        cli_io.set_context(False, False, "extract")
+        with mock.patch.object(cli_cmds_extract.api, "extract_run", return_value=run):
+            with contextlib.redirect_stdout(buffer):
+                cli_cmds_extract._cmd_extract_run(args, self.data_dir)
+        self.assertIn("已从事实证据重建水位", buffer.getvalue())
+        self.assertIn("watermark_rebuilt=true", buffer.getvalue())
+
+    def test_web_ui_static_features(self):
+        with open(os.path.join(ROOT, "fasti", "adapters", "web_static", "extract.js"),
+                  encoding="utf-8") as handle:
+            script = handle.read()
+        self.assertIn("auto_trigger_on_open", script)          # AC-16-1
+        self.assertIn("web_open", script)
+        self.assertIn("fasti-extract-last-trigger", script)     # 节流持久化
+        self.assertIn("recall_details", script)                 # AC-16-2/11
+        self.assertIn("reasons", script)
+        self.assertIn("message_ids", script)                    # AC-17-1 来源证据
+        self.assertIn("冲突标记", script)
+        self.assertIn("watermark_rebuilt", script)              # AC-16-9
+        self.assertIn("编辑后通过", script)                     # AC-17-5
+        with open(os.path.join(ROOT, "fasti", "adapters", "web_static", "index.html"),
+                  encoding="utf-8") as handle:
+            page = handle.read()
+        self.assertIn("extract-queue", page)
+        self.assertIn("extract-accept", page)
+
     def test_cli_enable_requires_consent(self):
         denied = self._run("extract", "consent", "--reset")
         self.assertEqual(denied.returncode, 0)

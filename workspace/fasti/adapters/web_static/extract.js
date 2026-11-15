@@ -33,6 +33,36 @@
     node.className = bad ? "msg bad" : "msg";
   }
 
+  function maybeAutoTrigger(data) {
+    if (!data.enabled || !data.auto_trigger_on_open || !data.consent.accepted) { return; }
+    if (!data.config_ok) { return; }
+    var interval = (data.auto_trigger_min_interval_seconds || 60) * 1000;
+    var last = 0;
+    try { last = parseInt(window.localStorage.getItem("fasti-extract-last-trigger") || "0", 10); }
+    catch (err) { last = 0; }
+    if (Date.now() - last < interval) { return; }
+    try { window.localStorage.setItem("fasti-extract-last-trigger", String(Date.now())); }
+    catch (err) { /* 忽略：无 localStorage 时仍允许本次触发 */ }
+    msg("页面加载：正在自动增量提取（web_open）…");
+    call("/api/extract/run", { method: "POST", body: { trigger: "web_open" } })
+      .then(function (payload) {
+        var run = payload.run;
+        var counters = run.counters;
+        msg("自动提取完成：会话 " + counters.sessions_processed + " / 消息 " +
+            counters.messages_processed + "；候选 " + counters.candidates_created);
+        renderStatusFromRun(run, data);
+        refresh();
+      })
+      .catch(function (err) { msg("自动提取失败（不影响其他功能）：" +
+                                  (err.message || err.code), true); });
+  }
+
+  function renderStatusFromRun(run, data) {
+    if (run.watermark_rebuilt) {
+      msg("提示：检测到水位缺失/损坏，已从事实证据重建水位");
+    }
+  }
+
   function renderStatus(data) {
     config = data;
     text("extract-status",
@@ -65,12 +95,21 @@
       data.items.forEach(function (candidate) {
         var row = document.createElement("li");
         var content = document.createElement("div");
+        var conflict = candidate.relation.llm === "update" ? "更新候选" :
+          (candidate.relation.llm === "conflict" ? "冲突候选" :
+           (candidate.system.similar ? "系统相似" : ""));
         content.textContent = candidate.content + "（" + candidate.category_key +
           " · extraction " + candidate.extraction_confidence +
           " · relation " + (candidate.relation.llm || "-") +
           " · 系统相似 " + (candidate.system.similar ? "是" : "否") +
-          " · 召回 " + candidate.recall.mode + "）";
+          " · 召回 " + candidate.recall.mode + " · " + (conflict || "无冲突标记") + "）";
         row.appendChild(content);
+        var evidence = document.createElement("div");
+        evidence.className = "small";
+        evidence.textContent = "来源：session " +
+          (candidate.session_id || "-") + " · message_ids " +
+          ((candidate.evidence && candidate.evidence.message_ids) || []).join(", ");
+        row.appendChild(evidence);
         var actions = document.createElement("div");
         actions.className = "row";
         var approve = document.createElement("button");
@@ -87,6 +126,32 @@
         correct.textContent = "作为纠正通过";
         correct.addEventListener("click", function () { approveCandidate(candidate, "correct"); });
         actions.appendChild(correct);
+        var detail = document.createElement("button");
+        detail.type = "button"; detail.className = "secondary"; detail.textContent = "详情";
+        detail.addEventListener("click", function () { showDetail(candidate.candidate_id); });
+        actions.appendChild(detail);
+        var edit = document.createElement("button");
+        edit.type = "button"; edit.className = "secondary"; edit.textContent = "编辑后通过";
+        edit.addEventListener("click", function () {
+          var content = window.prompt("编辑后的内容（保留原始/最终审计）", candidate.content);
+          if (content === null || !content.trim()) { return; }
+          var validFrom = window.prompt("生效时间（YYYY-MM / YYYY-MM-DD / 时刻；留空=当前）", "") || undefined;
+          var changeType = candidate.relation.llm === "update" ? "correct" : "new";
+          if (candidate.relation.llm === "update") {
+            changeType = window.prompt("更新类：请选择 evolve（演进）或 correct（纠正）", "correct");
+            if (changeType !== "evolve" && changeType !== "correct") { return; }
+          }
+          call("/api/extract/candidates/" + encodeURIComponent(candidate.candidate_id) +
+               "/approve", { method: "POST", body: { change_type: changeType,
+                                                   content: content,
+                                                   valid_from: validFrom } })
+            .then(function (data) {
+              msg("编辑后已通过：" + data.fact.fact_id.replace(/-/g, "").slice(0, 12));
+              refresh();
+            })
+            .catch(function (err) { msg(err.message || err.code, true); });
+        });
+        actions.appendChild(edit);
         var reject = document.createElement("button");
         reject.type = "button"; reject.className = "secondary"; reject.textContent = "拒绝";
         reject.addEventListener("click", function () {
@@ -100,6 +165,36 @@
         list.appendChild(row);
       });
     }).catch(function (err) { text("extract-queue", err.message || err.code); });
+  }
+
+  function showDetail(candidateId) {
+    call("/api/extract/candidates/" + encodeURIComponent(candidateId))
+      .then(function (data) {
+        var candidate = data.candidate;
+        var lines = ["候选 " + candidate.candidate_id,
+                     "状态：" + candidate.status + "；内容：" + candidate.content,
+                     "召回：mode=" + candidate.recall.mode + "，bytes=" +
+                     candidate.recall.corpus_bytes + "，truncated=" +
+                     candidate.recall.truncated];
+        (data.recall_details || []).forEach(function (item) {
+          lines.push("  · fact " + item.fact_id.replace(/-/g, "").slice(0, 12) +
+                     " | " + item.category_key + (item.disabled ? "|关闭" : "") +
+                     " | " + item.kind + " | " + item.content +
+                     " | 原因：" + ((item.reasons || []).join(",") || "-"));
+        });
+        if (data.target_fact) {
+          lines.push("目标事实（update/conflict）：fact " +
+                     data.target_fact.fact_id.replace(/-/g, "").slice(0, 12) +
+                     " | " + data.target_fact.category_key + " | " +
+                     data.target_fact.content);
+        }
+        (data.evidence_preview || []).forEach(function (preview) {
+          lines.push("证据 " + preview.message_id + "（#" + preview.ordinal + "）：" +
+                     preview.snippet);
+        });
+        window.alert(lines.join("\n"));
+      })
+      .catch(function (err) { msg(err.message || err.code, true); });
   }
 
   function approveCandidate(candidate, changeType) {
@@ -120,7 +215,10 @@
   }
 
   function refresh() {
-    call("/api/extract/status").then(renderStatus).catch(function (err) {
+    call("/api/extract/status").then(function (data) {
+      renderStatus(data);
+      maybeAutoTrigger(data);
+    }).catch(function (err) {
       text("extract-status", "读取失败：" + (err.message || err.code));
     });
   }
