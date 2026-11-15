@@ -1,4 +1,4 @@
-"""AC-11-*/AC-12-*：导出 bundle 形状、确定性与导入还原（v3 format_version 3）。"""
+"""AC-11-*/AC-12-*：导出 bundle 形状、确定性与导入还原（v4 format_version 4）。"""
 
 import json
 import os
@@ -24,7 +24,7 @@ class TestExportImport(BaseStoreTest):
         first = api.export_bundle(self.data_dir)
         second = api.export_bundle(self.data_dir)
         out1, out2 = first["output_dir"], second["output_dir"]
-        self.assertEqual(first["format_version"], 3)
+        self.assertEqual(first["format_version"], 4)
         concept = os.path.join(out1, "concepts", "tech", self.line_id + ".md")
         self.assertTrue(os.path.isfile(concept))
         for name in ("index.md", "profile.md", "log.md", "data/events.jsonl",
@@ -48,7 +48,7 @@ class TestExportImport(BaseStoreTest):
         self.assertIn("- 2025-01 至 2026-10：主力语言：Python", concept_text)
         with open(os.path.join(out1, "manifest.json"), encoding="utf-8") as handle:
             manifest = json.load(handle)
-        self.assertEqual(manifest["format_version"], 3)
+        self.assertEqual(manifest["format_version"], 4)
         self.assertEqual(manifest["payload"]["path"], "data/events.jsonl")
         self.assertEqual(manifest["payload"]["sha256"],
                          _sha(os.path.join(out1, "data", "events.jsonl")))

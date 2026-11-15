@@ -1,8 +1,19 @@
 -- =============================================================================
--- fasti · 数据模型 DDL（SQLite 3 · schema_version 3）
--- 对应 product-spec v3 + brief C-06/C-07 / architecture.md v1.6（ADR-002 / ADR-003 /
--- ADR-009 / ADR-023 / ADR-024 / ADR-025 / ADR-026）/ api-spec.yaml v1.3
+-- fasti · 数据模型 DDL（SQLite 3 · schema_version 4）
+-- 对应 product-spec v5.1 + brief C-06/C-07/C-08/C-09 / architecture.md v1.8（ADR-002 / ADR-003 /
+-- ADR-009 / ADR-023 / ADR-024 / ADR-025 / ADR-026 / ADR-027 / ADR-028~031）/ api-spec.yaml v2.0
 -- -----------------------------------------------------------------------------
+-- 【v8 变更说明（2026-11-15，brief C-09：P1 自动提取，两段式）】
+--   schema_version 3 → 4；事件格式 format_version 3 → 4。变更仅为审计字段（纯加性）：
+--   1) fact.source 枚举增加 'auto_extract'（自动写入 / 审核通过）；user_entry 保持不变；
+--   2) fact 新增 nullable 列 extraction（JSON：candidate_id/session_id/message_ids/message_ordinals/
+--      mode/run_id/llm_relation/system_relation/confidence/reviewed_by_user/recall）；
+--   3) 视图 v_fact_current_content 带出 source/extraction；历史/导出可辨「自动提取」；
+--   4) 候选/水位/运行记录是**过程状态**，存 <data-dir>/state/extract/（JSON/JSONL），不进本 DDL 的
+--      事件真相，也不参与导出/导入；本文件末尾仅给出其**规范参考模型**（不建表）；
+--   5) 其它表/列/事件类型/导出结构不变。format_version 4 由 C-09 单独引入（C-07/C-08 的 3 之后）。
+--   数据迁移：v3 数据目录/导出包不向后兼容读取（见文件末尾「迁移/回滚说明」与 architecture.md §15.10）；
+--   v3→v4 为纯加性：只改 store_initialized.format_version，其余事件字节不变。
 -- 【v6 变更说明（2026-11-09，brief C-07：生效时间精度升级为秒级）】
 --   schema_version 2 → 3；事件格式 format_version 2 → 3。变更只涉及时间精度：
 --   1) fact.valid_from：YYYY-MM → 完整 RFC3339 时间戳（带本机偏移、秒精度）；
@@ -52,7 +63,7 @@
 -- =============================================================================
 
 PRAGMA foreign_keys = ON;
-PRAGMA user_version = 3;     -- schema_version：结构变更时 +1（v3 = 秒级生效时间）
+PRAGMA user_version = 4;     -- schema_version：结构变更时 +1（v4 = P1 自动提取审计字段）
 
 -- =============================================================================
 -- A. 持久化表：event（对应 <data-dir>/events.jsonl，每行一个 JSON 对象）
@@ -178,15 +189,22 @@ CREATE TABLE IF NOT EXISTS fact (
                                       -- 注意：纠正不产生新事实段，纠正记录在 fact_revision.revision_type
   , previous_fact_id TEXT             -- 演进来源：change_type='evolve' 时指向被演进的上一段；'create' 时必须为 NULL
                                       -- 自引用外键 fact(fact_id)，ON DELETE RESTRICT（链完整性；物理删不允许）
-  , source         TEXT NOT NULL DEFAULT 'user_entry'  -- 来源：P0 唯一取值 user_entry（用户录入）
-                                      -- 枚举：user_entry（本迭代）；未来扩展来源需 format_version 升级，不得静默新增
+  , source         TEXT NOT NULL DEFAULT 'user_entry'  -- 来源：user_entry=用户录入；auto_extract=自动提取（自动写入/审核通过）
+                                      -- 枚举由 format_version 4 扩展；不得静默新增其它来源
+  , extraction     TEXT               -- P1 自动提取审计（派生列；来自事件 extraction 字段）：
+                                      -- canonical JSON：candidate_id/session_id/message_ids/message_ordinals/
+                                      -- mode(auto_write|user_approved)/run_id/llm_relation/system_relation/
+                                      -- confidence/reviewed_by_user/recall{mode,current_fact_ids,historical_fact_ids,truncated}；
+                                      -- user_entry 为 NULL；不参与排序/画像/区间计算
   , recorded_at    TEXT NOT NULL      -- 首次录入时间：纠正**不得改写**（AC-1-3「第一次录入时间不被改写」）
   , deleted_at     TEXT               -- 删除墓碑时间：NULL=未删除。删除后不参与当前画像/回溯，但历史可见（AC-1-4）
   , duplicate_confirmation TEXT      -- C-08 确认痕迹（派生列；来自 fact_created.duplicate_confirmation 事件字段）：
                                     -- canonical JSON {confirmed, candidates, max_similarity, token_sha256}；NULL=无确认痕迹。
                                     -- 仅由事件折叠而来，不参与排序/画像/区间计算；用于历史与导出审计（AC-15-3/AC-15-5）。
   , CHECK (change_type IN ('create', 'evolve'))
-  , CHECK (source IN ('user_entry'))
+  , CHECK (source IN ('user_entry', 'auto_extract'))
+  , CHECK (extraction IS NULL OR json_valid(extraction))
+  , CHECK ((source = 'auto_extract') = (extraction IS NOT NULL))   -- 自动来源必须有审计；用户来源不得伪造审计
   , CHECK (length(fact_id) = 36
         AND substr(fact_id, 9, 1) = '-' AND substr(fact_id, 14, 1) = '-'
         AND substr(fact_id, 19, 1) = '-' AND substr(fact_id, 24, 1) = '-'
@@ -323,6 +341,8 @@ SELECT f.fact_id,
        f.recorded_at,
        f.deleted_at,
        f.duplicate_confirmation,
+       f.source,
+       f.extraction,
        r.content,
        r.revision_type,
        r.recorded_at AS content_recorded_at,
@@ -352,11 +372,11 @@ WHERE v.deleted_at IS NULL
 -- -----------------------------------------------------------------------------
 -- (1) 事件序号必须从 1 连续：
 --   SELECT MIN(event_seq), MAX(event_seq), COUNT(*) FROM event;   -- 期望 MIN=1 且 MAX=COUNT
--- (2) 首事件必须是 store_initialized 且只出现一次、format_version 必须为 3：
+-- (2) 首事件必须是 store_initialized 且只出现一次、format_version 必须为 4：
 --   SELECT event_seq, event_type FROM event WHERE event_seq = 1 AND event_type <> 'store_initialized';
 --   SELECT event_seq FROM event WHERE event_type = 'store_initialized' AND event_seq <> 1;
 --   SELECT event_seq FROM event WHERE event_type = 'store_initialized'
---     AND (json_extract(payload, '$.format_version') IS NOT 3);
+--     AND (json_extract(payload, '$.format_version') IS NOT 4);
 -- (3) 同一命题线内未删除事实段不得重叠（按瞬间严格递增，且 valid_to = 下一段 valid_from）：
 --   SELECT a.fact_id, b.fact_id FROM fact a JOIN fact b
 --     ON a.line_id = b.line_id AND a.deleted_at IS NULL AND b.deleted_at IS NULL
@@ -387,11 +407,101 @@ WHERE v.deleted_at IS NULL
 -- =============================================================================
 
 -- =============================================================================
--- 迁移 / 回滚说明（文字版；当前 schema_version 3；历史：1 → 2 → 3）
+-- P1 过程状态参考模型（C-09；**不在本 DDL 建表**）
 -- -----------------------------------------------------------------------------
--- 【版本标识】PRAGMA user_version = 3；事件日志另带 format_version（store_initialized 事件与
---   导出 manifest 中各有一次，当前值 = 3）。两者必须一致：user_version 描述「读取模型结构」，
+-- 运行时实际存储：<data-dir>/state/extract/{watermarks.json, candidates.jsonl, runs.jsonl}（JSON/JSONL，
+-- 追加/原子重写）。它们是**可重建派生态**，不参与事件折叠、verify 的 sql.constraints、导出/导入；
+-- 这里的表结构仅固定字段、主键与索引意图，供实现与 QA 对照 api-spec `file_formats.extract_state`。
+-- 若未来改为 SQLite 持久化，可直接启用以下 DDL（届时 schema_version +1，并补迁移说明）。
+--
+-- CREATE TABLE extract_watermark (            -- PK(session_id)；每个 DSH 根会话一行
+--   session_id          TEXT PRIMARY KEY,
+--   path                TEXT NOT NULL,
+--   path_hash           TEXT NOT NULL,
+--   last_seq            INTEGER NOT NULL,
+--   last_message_id     TEXT,
+--   last_event_sha256   TEXT NOT NULL,
+--   processed_user_messages INTEGER NOT NULL DEFAULT 0,
+--   updated_at          TEXT NOT NULL,
+--   run_id              TEXT NOT NULL,
+--   CHECK (json_valid(json_object('last_seq', last_seq))),
+--   CHECK (processed_user_messages >= 0)
+-- );
+-- 索引意图：按 updated_at 找最近处理会话（ix_extract_watermark_updated）。
+--
+-- CREATE TABLE extract_candidate (           -- PK(candidate_id)；追加型快照按 candidate_id 折叠
+--   candidate_id         TEXT PRIMARY KEY,   -- cand-<sha256[:20]>
+--   schema_version       INTEGER NOT NULL DEFAULT 1,
+--   status               TEXT NOT NULL CHECK (status IN ('pending','approved','rejected','duplicate','dropped')),
+--   created_at           TEXT NOT NULL,
+--   updated_at           TEXT NOT NULL,
+--   session_id           TEXT NOT NULL,
+--   message_ids          TEXT NOT NULL,      -- JSON array（本块用户消息 id）
+--   message_ordinals     TEXT,               -- JSON array（1-based）
+--   chunk_id             TEXT,
+--   run_id               TEXT NOT NULL,
+--   content              TEXT NOT NULL,      -- 已打码单行
+--   category_key         TEXT,               -- 已解析（可为 NULL，待审核时补）
+--   suggested_category_key TEXT,
+--   change_type          TEXT CHECK (change_type IN ('new','evolve','correct')),
+--   target_fact_id       TEXT,
+--   extraction_confidence REAL CHECK (extraction_confidence BETWEEN 0 AND 1),
+--   relation_json        TEXT,               -- {llm,target,relation_confidence,rationale,unverified}
+--   system_json          TEXT,               -- {similar,matches[],layer_mismatch}
+--   recall_json          TEXT NOT NULL,      -- {mode,corpus_bytes,recalled_fact_ids[],historical_fact_ids[],reasons{},truncated}
+--   decision             TEXT NOT NULL CHECK (decision IN ('auto_write','review','reject')),
+--   reason_code          TEXT,
+--   evidence_json        TEXT NOT NULL,      -- {message_ids[]}（不存原文引文）
+--   review_json          TEXT,               -- {status,reviewed_at,original_content,final_content,edits,reject_reason}
+--   write_fact_id        TEXT,
+--   write_event_seq      INTEGER,
+--   evidence_key         TEXT NOT NULL,      -- sha256(session_id + message_ids + normalized_content)
+--   existing_fact_id     TEXT,
+--   CHECK (json_valid(message_ids) AND json_valid(recall_json) AND json_valid(evidence_json)),
+--   CHECK (length(content) BETWEEN 1 AND 2000)
+-- );
+-- 索引意图：ix_extract_candidate_status(status, created_at) 供待审队列；
+--   ix_extract_candidate_evidence(evidence_key) 供幂等去重。
+--
+-- CREATE TABLE extract_run (                 -- PK(run_id)；一次运行一行（final snapshot）
+--   run_id          TEXT PRIMARY KEY,        -- UUIDv7
+--   schema_version  INTEGER NOT NULL DEFAULT 1,
+--   started_at      TEXT NOT NULL,
+--   finished_at     TEXT,
+--   trigger         TEXT NOT NULL CHECK (trigger IN ('manual','web_open','cli')),
+--   status          TEXT NOT NULL CHECK (status IN ('ok','partial','failed','disabled')),
+--   counters_json   TEXT NOT NULL,           -- sessions/messages/candidates/auto_written/queued/duplicates/sensitive_skipped/errors
+--   recall_json     TEXT,                    -- {mode,corpus_bytes,candidates,recalled,truncated}
+--   llm_json        TEXT,                    -- {model,base_url_host,latency_ms,retries,calls}（不含密钥/请求体）
+--   watermark_rebuilt INTEGER NOT NULL DEFAULT 0,
+--   sessions_json   TEXT,                    -- [{session_id,status,messages,candidates,error_code}]
+--   errors_json     TEXT,                    -- [{code,session_id,safe_detail}]
+--   CHECK (json_valid(counters_json) AND (recall_json IS NULL OR json_valid(recall_json)))
+-- );
+-- 索引意图：ix_extract_run_started(started_at) 供最近运行。
+-- -----------------------------------------------------------------------------
+
+-- =============================================================================
+-- 迁移 / 回滚说明（文字版；当前 schema_version 4；历史：1 → 2 → 3 → 4）
+-- -----------------------------------------------------------------------------
+-- 【版本标识】PRAGMA user_version = 4；事件日志另带 format_version（store_initialized 事件与
+--   导出 manifest 中各有一次，当前值 = 4）。两者必须一致：user_version 描述「读取模型结构」，
 --   format_version 描述「事件/导出格式」。
+--
+-- 【v3 → v4 迁移（brief C-09：P1 自动提取审计字段）】
+--   兼容性：**不向后兼容读取**。v4 代码遇到 v3 数据目录 ⇒ STORE_FORMAT_UNSUPPORTED（退出码 5，
+--   提示迁移）；遇到 v3 导出包 ⇒ IMPORT_UNSUPPORTED_FORMAT_VERSION（退出码 4，提示迁移）。
+--   步骤（脚本 `scripts/migrate_v3_to_v4.py`，一次性离线、stdlib；详见 architecture.md §15.10）：
+--   1) `fasti verify --deep` 预检；记录 profile/*.md、dist/* sha256 基线；整目录备份
+--      `~/.fasti.v3-backup-<ts>` + v3 `fasti export`；建议复制备份到 /tmp 演练。
+--   2) 停写（关闭 fasti web）。
+--   3) 仅把 store_initialized.format_version 由 3 改为 4；**其它事件字节保持不变**
+--      （已有 facts 的 source 仍 'user_entry'、extraction 缺失 ⇒ NULL）。
+--   4) 原子写回 + 删除 state/manifest.json → verify → recompute → render；
+--      与迁移前 sha256 对比（既有画像/历史文本应逐字节不变）→ verify --deep → export v4 空环境往返。
+--   5) 回滚：恢复 v3 备份 + 切回旧代码 tag；`state/extract/` 可删除（过程状态）。
+--   候选/水位/运行记录不迁移；导入/换机后水位由事实 extraction 证据重建、候选队列不迁移。
+--   兼容性附加：v4 事件新增的可选 extraction 字段不修改旧事实语义；来源审计可见于 history/export。
 --
 -- 【v2 → v3 迁移（brief C-07：生效时间精度升级为秒级）】
 --   兼容性：**不向后兼容读取**。v3 代码遇到 v2 数据目录 ⇒ STORE_FORMAT_UNSUPPORTED（退出码 5，
@@ -455,8 +565,8 @@ WHERE v.deleted_at IS NULL
 --   3) 删除 state/manifest.json（派生状态归零，避免「假装最新」）；
 --   4) 运行 verify（期望 sql.constraints 与 store.invariants 通过）→ recompute → render。
 --
--- 【回滚步骤（v3 → v2 / v1，含结构回滚）】
---   1) 恢复对应版本的数据目录备份（~/.fasti.v2-backup-<ts> / ~/.fasti.v1-backup）或该版本 export；
+-- 【回滚步骤（v4 → v3 / v2 / v1，含结构回滚）】
+--   1) 恢复对应版本的数据目录备份（~/.fasti.v3-backup-<ts> / ~/.fasti.v2-backup-<ts> / ~/.fasti.v1-backup）或该版本 export；
 --   2) 切回对应版本代码（git tag）；
 --   3) 若需退回旧 schema：按依赖逆序删表/视图，再执行 v1 DDL 与 user_version；
 --      顺序：DROP VIEW v_line_current_fact; DROP VIEW v_fact_current_content;

@@ -16,11 +16,11 @@ L0_SPEC_NAME = "Open Memory Ledger (OML)"
 
 # --- 版本 -------------------------------------------------------------------
 APP_VERSION = "0.1.0"
-CONTRACT_VERSION = "1.4.0"
-FORMAT_VERSION = 3
+CONTRACT_VERSION = "2.0.0"
+FORMAT_VERSION = 4
 MANIFEST_VERSION = 1
 BUNDLE_VERSION = 1
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # --- 内容约束（api-spec conventions.content_rules / AS-08） ------------------
 # C-08 相似检测（ADR-027）：多级常量，不提供用户配置项

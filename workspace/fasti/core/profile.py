@@ -156,6 +156,8 @@ def _fact_history_entry(model, category, line, fact):
         "revision_count": fact["revision_count"],
         "corrections": corrections,
         "duplicate_confirmation": fact.get("duplicate_confirmation"),
+        "source": fact.get("source"),
+        "extraction": fact.get("extraction"),
         "deleted_at": fact["deleted_at"],
     }
 
@@ -283,6 +285,12 @@ def _history_entry_lines(entry):
                                      clock.display_time(entry["valid_from"]),
                                      entry["display_end"])]
     lines.append("  ↳ 变更：%s（%s）" % (entry["change_kind"], entry["recorded_at"]))
+    extraction = entry.get("extraction")
+    if extraction:
+        mode_text = "自动写入" if extraction.get("mode") == "auto_write" else "用户通过"
+        lines.append("  ↳ 来源：自动提取（会话 %s · 候选 %s；%s；召回 %s）"
+                     % (extraction.get("session_id"), extraction.get("candidate_id"),
+                        mode_text, (extraction.get("recall") or {}).get("mode")))
     confirmation = entry.get("duplicate_confirmation")
     if confirmation:
         candidates = "、".join(ids.short_id(item)

@@ -20,7 +20,8 @@ from ._shared import (WARN_RENDER, _load_model, _make_event, _require_alive_cate
 __all__ = ["add_fact", "change_fact", "delete_fact", "list_facts", "show_fact"]
 
 
-def add_fact(data_dir, category, content, valid_from, confirm_token=None):
+def add_fact(data_dir, category, content, valid_from, confirm_token=None,
+             source="user_entry", extraction=None):
     data_dir = os.path.abspath(data_dir)
     with store.store_lock(data_dir):
         _, events, model = _load_model(data_dir)
@@ -33,6 +34,12 @@ def add_fact(data_dir, category, content, valid_from, confirm_token=None):
                 details={"category_key": category_obj["key"], "field": "category"},
             )
         content = validate.require_content(content)
+        if source not in ("user_entry", "auto_extract"):
+            raise errors.make("VALIDATION_INVALID_HANDLING",
+                              "source 取值不合法：%r" % (source,))
+        if (source == "auto_extract") != (extraction is not None):
+            raise errors.make("VALIDATION_INVALID_HANDLING",
+                              "source=auto_extract 与 extraction 必须同时出现")
         now = clock.now_local()
         normalized = validate.require_valid_from(valid_from, now)
         # C-08 B（服务端拦截）：在 valid_from 归一之后、追加事件之前检测相似
@@ -83,9 +90,11 @@ def add_fact(data_dir, category, content, valid_from, confirm_token=None):
             "category_key": category_obj["key"],
             "content": content,
             "valid_from": normalized["value"],
-            "source": "user_entry",
+            "source": source,
             "recorded_at": at,
         }
+        if extraction is not None:
+            event_data["extraction"] = extraction
         if duplicate_confirmation is not None:
             event_data["duplicate_confirmation"] = duplicate_confirmation
         event = _make_event(events, "fact_created", event_data, at)
@@ -101,7 +110,8 @@ def add_fact(data_dir, category, content, valid_from, confirm_token=None):
     }
 
 
-def change_fact(data_dir, fact_id, change_type, content, valid_from=None, note=None):
+def change_fact(data_dir, fact_id, change_type, content, valid_from=None, note=None,
+                extraction=None):
     data_dir = os.path.abspath(data_dir)
     with store.store_lock(data_dir):
         _, events, model = _load_model(data_dir)
@@ -130,12 +140,15 @@ def change_fact(data_dir, fact_id, change_type, content, valid_from=None, note=N
                     details={"field": "valid_from"},
                 )
             note_text = validate.require_note(note)
-            event = _make_event(events, "fact_corrected", {
+            corrected_data = {
                 "fact_id": fact["fact_id"],
                 "content": content,
                 "note": note_text,
                 "recorded_at": at,
-            }, at)
+            }
+            if extraction is not None:
+                corrected_data["extraction"] = extraction
+            event = _make_event(events, "fact_corrected", corrected_data, at)
             new_events = events + [event]
             new_model = fold_for_write(new_events)
             store.write_events(data_dir, new_events)
@@ -182,15 +195,18 @@ def change_fact(data_dir, fact_id, change_type, content, valid_from=None, note=N
             validate.require_note(note)
             warnings.append("演进不保存备注（仅纠正支持备注）：已忽略 --note")
         new_fact_id = ids.new_uuid7()
-        event = _make_event(events, "fact_evolved", {
+        evolved_data = {
             "fact_id": new_fact_id,
             "line_id": fact["line_id"],
             "previous_fact_id": fact["fact_id"],
             "content": content,
             "valid_from": resolved["value"],
-            "source": "user_entry",
+            "source": "auto_extract" if extraction else "user_entry",
             "recorded_at": at,
-        }, at)
+        }
+        if extraction is not None:
+            evolved_data["extraction"] = extraction
+        event = _make_event(events, "fact_evolved", evolved_data, at)
         new_events = events + [event]
         new_model = fold_for_write(new_events)      # 先内存折叠校验
         store.write_events(data_dir, new_events)    # 通过后才落盘

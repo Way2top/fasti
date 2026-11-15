@@ -47,6 +47,17 @@ from .services.views import (
     recompute,
     render_hosts,
 )
+from .services.extract import (
+    extract_run,
+    get_extract_config,
+    get_extract_status,
+    list_extract_candidates,
+    list_extract_runs,
+    resolve_extract_candidate,
+    set_extract_config,
+    set_extract_consent,
+    show_extract_candidate,
+)
 from .services.verify import verify
 from .clock import display_end, display_time
 from .ids import short_id
@@ -66,6 +77,15 @@ __all__ = [
     "WARN_RENDER",
     "WARN_RECOMPUTE",
     "short_id",
+    "get_extract_config",
+    "set_extract_config",
+    "set_extract_consent",
+    "get_extract_status",
+    "extract_run",
+    "list_extract_candidates",
+    "show_extract_candidate",
+    "resolve_extract_candidate",
+    "list_extract_runs",
     "display_time",
     "display_end",
     # 20 个应用服务函数（api-spec.yaml core_api.functions）

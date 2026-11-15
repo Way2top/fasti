@@ -73,13 +73,17 @@ def check_sql_constraints(model):
             fact = model.facts[fact_id]
             conn.execute(
                 "INSERT INTO fact (fact_id, line_id, valid_from, valid_to, change_type,"
-                " previous_fact_id, source, recorded_at, deleted_at, duplicate_confirmation)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?)",
+                " previous_fact_id, source, recorded_at, deleted_at, duplicate_confirmation,"
+                " extraction)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (fact["fact_id"], fact["line_id"], fact["valid_from"], fact["valid_to"],
                  fact["change_type"], fact["previous_fact_id"], fact["source"],
                  fact["recorded_at"], fact["deleted_at"],
                  None if fact.get("duplicate_confirmation") is None else
                  json.dumps(fact["duplicate_confirmation"], sort_keys=True,
+                            separators=(",", ":"), ensure_ascii=False),
+                 None if fact.get("extraction") is None else
+                 json.dumps(fact["extraction"], sort_keys=True,
                             separators=(",", ":"), ensure_ascii=False)),
             )
         for fact_id in model.fact_order:

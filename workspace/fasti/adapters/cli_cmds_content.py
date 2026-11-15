@@ -101,6 +101,12 @@ def _cmd_fact_show(args, data_dir):
                           if fact["deleted_at"] else "未删除"),
         "修订：",
     ]
+    extraction = fact.get("extraction")
+    if extraction:
+        mode_text = "自动写入" if extraction.get("mode") == "auto_write" else "用户通过"
+        lines.append("来源：自动提取（会话 %s · 候选 %s；%s；召回 %s）"
+                     % (extraction.get("session_id"), extraction.get("candidate_id"),
+                        mode_text, (extraction.get("recall") or {}).get("mode")))
     confirmation = fact.get("duplicate_confirmation")
     if confirmation:
         candidates = "、".join(api.short_id(item) for item in confirmation["candidates"])

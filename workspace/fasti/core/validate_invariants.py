@@ -97,6 +97,18 @@ def check_invariants(model):
             elif clock.compare(fact["valid_to"], fact["valid_from"]) <= 0:
                 problems.append("事实 %s 的 valid_to 未晚于 valid_from（零长/负区间）"
                                 % fact["fact_id"])
+        source = fact.get("source")
+        if source not in ("user_entry", "auto_extract"):
+            problems.append("事实 %s 的 source 非法：%r" % (fact["fact_id"], source))
+        extraction = fact.get("extraction")
+        if (source == "auto_extract") != (extraction is not None):
+            problems.append("事实 %s 的 source/extraction 不一致" % fact["fact_id"])
+        if extraction is not None:
+            required = {"candidate_id", "session_id", "message_ids", "message_ordinals",
+                        "mode", "run_id", "llm_relation", "system_relation",
+                        "confidence", "reviewed_by_user", "recall"}
+            if not isinstance(extraction, dict) or set(extraction) != required:
+                problems.append("事实 %s 的 extraction 结构非法" % fact["fact_id"])
         confirmation = fact.get("duplicate_confirmation")
         if confirmation is not None:
             if not isinstance(confirmation, dict) \

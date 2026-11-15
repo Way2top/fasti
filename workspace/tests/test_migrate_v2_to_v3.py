@@ -11,10 +11,16 @@ from _base import BaseStoreTest, ROOT, _sha
 from fasti.core import api, store
 
 SCRIPT = os.path.join(ROOT, "scripts", "migrate_v2_to_v3.py")
+SCRIPT_V4 = os.path.join(ROOT, "scripts", "migrate_v3_to_v4.py")
 
 
 def _run(*args):
     return subprocess.run([sys.executable, SCRIPT] + list(args),
+                          capture_output=True, text=True)
+
+
+def _run_v4(*args):
+    return subprocess.run([sys.executable, SCRIPT_V4] + list(args),
                           capture_output=True, text=True)
 
 
@@ -74,10 +80,13 @@ class TestMigrateV2ToV3(BaseStoreTest):
         proc = _run("--data-dir", v2_dir)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("迁移完成", proc.stdout)
+        proc_v4 = _run_v4("--data-dir", v2_dir)
+        self.assertEqual(proc_v4.returncode, 0, proc_v4.stderr)
+        self.assertIn("format_version: 3 → 4", proc_v4.stdout)
         self.assertFalse(os.path.exists(os.path.join(manifest_dir, "manifest.json")))
         self.assertEqual(store.read_events_bytes(v2_dir), store.read_events_bytes(source))
         first = json.loads(store.read_events_bytes(v2_dir).decode().split("\n")[0])
-        self.assertEqual(first["data"]["format_version"], 3)
+        self.assertEqual(first["data"]["format_version"], 4)
 
         for directory in (source, v2_dir):
             api.recompute(directory)

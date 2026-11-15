@@ -206,7 +206,8 @@ def _new_line(rm, event, line_id, category_key, created_at):
 
 
 def _new_fact(rm, event, fact_id, line_id, valid_from, content, change_type,
-              previous_fact_id, source, recorded_at, duplicate_confirmation=None):
+              previous_fact_id, source, recorded_at, duplicate_confirmation=None,
+              extraction=None):
     _require_uuid7(event, fact_id, "fact_id")
     if fact_id in rm.facts:
         _fail(event, "事实 ID 重复：%s" % fact_id)
@@ -225,6 +226,7 @@ def _new_fact(rm, event, fact_id, line_id, valid_from, content, change_type,
         "revision_count": 1,
         "deleted_at": None,
         "duplicate_confirmation": duplicate_confirmation,
+        "extraction": extraction,
     }
     rm.facts[fact_id] = fact
     rm.fact_order.append(fact_id)
@@ -262,6 +264,36 @@ def _require_duplicate_confirmation(event, value):
         _fail(event, "duplicate_confirmation.token_sha256 必须是 64 位小写十六进制")
 
 
+def _require_source_pair(event, data):
+    source = data.get("source")
+    if source not in ("user_entry", "auto_extract"):
+        _fail(event, "source 取值不合法：%r" % (source,))
+    extraction = data.get("extraction")
+    if (source == "auto_extract") != (extraction is not None):
+        _fail(event, "source=auto_extract 与 extraction 必须同时出现")
+    if extraction is not None:
+        required = {"candidate_id", "session_id", "message_ids", "message_ordinals",
+                    "mode", "run_id", "llm_relation", "system_relation",
+                    "confidence", "reviewed_by_user", "recall"}
+        if not isinstance(extraction, dict) or set(extraction) != required:
+            _fail(event, "extraction 结构不合法")
+        if extraction.get("mode") not in ("auto_write", "user_approved"):
+            _fail(event, "extraction.mode 非法")
+
+
+def copy_extraction(value):
+    if value is None:
+        return None
+    copied = dict(value)
+    copied["message_ids"] = list(copied.get("message_ids") or [])
+    copied["message_ordinals"] = list(copied.get("message_ordinals") or [])
+    copied["recall"] = dict(copied.get("recall") or {})
+    copied["recall"]["current_fact_ids"] = list(copied["recall"].get("current_fact_ids") or [])
+    copied["recall"]["historical_fact_ids"] = list(
+        copied["recall"].get("historical_fact_ids") or [])
+    return copied
+
+
 def _apply_fact_created(rm, event, index):
     data = event["data"]
     category_key = data["category_key"]
@@ -274,8 +306,7 @@ def _apply_fact_created(rm, event, index):
     if not category["enabled"]:
         _fail(event, "类别未启用：%s" % category_key)
     _require_valid_time(event, data["valid_from"], "valid_from")
-    if data["source"] != "user_entry":
-        _fail(event, "source 取值不合法：%r" % data["source"])
+    _require_source_pair(event, data)
     content = _content(event, data["content"])
     confirmation = data.get("duplicate_confirmation")
     if confirmation is not None:
@@ -285,7 +316,8 @@ def _apply_fact_created(rm, event, index):
     _new_line(rm, event, data["line_id"], category_key, data["recorded_at"])
     _new_fact(rm, event, data["fact_id"], data["line_id"], data["valid_from"], content,
               "create", None, data["source"], data["recorded_at"],
-              duplicate_confirmation=confirmation)
+              duplicate_confirmation=confirmation,
+              extraction=copy_extraction(data.get("extraction")))
 
 
 def _apply_fact_evolved(rm, event, index):
@@ -310,11 +342,11 @@ def _apply_fact_evolved(rm, event, index):
         _fail(event, "演进的新生效瞬间必须严格晚于被演进段（%s <= %s）"
               % (data["valid_from"], previous["valid_from"]))
     _require_after_previous(event, data["line_id"], rm, data["valid_from"])
-    if data["source"] != "user_entry":
-        _fail(event, "source 取值不合法：%r" % data["source"])
+    _require_source_pair(event, data)
     content = _content(event, data["content"])
     _new_fact(rm, event, data["fact_id"], data["line_id"], data["valid_from"], content,
-              "evolve", previous["fact_id"], data["source"], data["recorded_at"])
+              "evolve", previous["fact_id"], data["source"], data["recorded_at"],
+              extraction=copy_extraction(data.get("extraction")))
 
 
 def _apply_fact_corrected(rm, event, index):
@@ -337,6 +369,8 @@ def _apply_fact_corrected(rm, event, index):
         "note": note,
         "recorded_at": data["recorded_at"],
     })
+    if data.get("extraction") is not None:
+        fact["extraction"] = copy_extraction(data["extraction"])
 
 
 def _apply_fact_deleted(rm, event, index):

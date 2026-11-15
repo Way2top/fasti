@@ -70,10 +70,10 @@ def _write_bundle(bundle_dir, format_version, events=V2_EVENTS):
 
 
 class TestFormatGate(BaseStoreTest):
-    def test_new_store_is_format_version_3(self):
+    def test_new_store_is_format_version_4(self):
         with open(os.path.join(self.data_dir, "events.jsonl"), encoding="utf-8") as handle:
             first = json.loads(handle.readline())
-        self.assertEqual(first["data"]["format_version"], 3)
+        self.assertEqual(first["data"]["format_version"], 4)
 
     def test_old_store_rejected_with_migration_guidance(self):
         for writer, name in ((_write_v1_store, "v1-store"), (_write_v2_store, "v2-store")):
@@ -108,14 +108,14 @@ class TestFormatGate(BaseStoreTest):
         self.assertEqual(ctx.exception.code, "IMPORT_UNSUPPORTED_FORMAT_VERSION")
         self.assertEqual(ctx.exception.exit_code, 4)
         self.assertIn("迁移", ctx.exception.message)
-        self.assertIn("当前支持版本 3", ctx.exception.message)
+        self.assertIn("当前支持版本 4", ctx.exception.message)
         self.assertIn("§13.5", ctx.exception.message)
         self.assertIn("migrate_v2_to_v3", ctx.exception.message)
         self.assertFalse(os.path.exists(os.path.join(target, "events.jsonl")))
 
     def test_future_bundle_version_rejected(self):
-        bundle = os.path.join(self.tmp, "v4-bundle")
-        _write_bundle(bundle, 4)
+        bundle = os.path.join(self.tmp, "v5-bundle")
+        _write_bundle(bundle, 5)
         target = os.path.join(self.tmp, "import-target-3")
         with self.assertRaises(errors.CoreError) as ctx:
             api.import_bundle(target, bundle, False, True)
@@ -126,20 +126,20 @@ class TestFormatGate(BaseStoreTest):
         """P2 回归：IMPORT_UNSUPPORTED_FORMAT_VERSION 兜底文案不得残留旧版本号。"""
         from fasti.core import constants
         message = errors.DEFAULT_MESSAGES["IMPORT_UNSUPPORTED_FORMAT_VERSION"]
-        self.assertEqual(constants.FORMAT_VERSION, 3)
-        self.assertIn("当前支持版本 3", message)
+        self.assertEqual(constants.FORMAT_VERSION, 4)
+        self.assertIn("当前支持版本 4", message)
         self.assertIn("§13.5", message)
         self.assertIn("migrate_v2_to_v3", message)
         self.assertNotIn("当前支持版本 1", message)
 
-    def test_export_manifest_is_format_version_3(self):
+    def test_export_manifest_is_format_version_4(self):
         api.add_fact(self.data_dir, "tech", "x", "2026-11")
         exported = api.export_bundle(self.data_dir)
         with open(os.path.join(exported["output_dir"], "manifest.json"),
                   encoding="utf-8") as handle:
             manifest = json.load(handle)
-        self.assertEqual(manifest["format_version"], 3)
-        self.assertEqual(exported["format_version"], 3)
+        self.assertEqual(manifest["format_version"], 4)
+        self.assertEqual(exported["format_version"], 4)
 
 
 if __name__ == "__main__":
