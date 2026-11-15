@@ -87,8 +87,8 @@
 | ST-48 | AC-13-1~13-5（防呆） | `node --check fasti/adapters/web_static/app.js` + 断言 IIFE 首尾行 | 修复 R-F1 后 **exit 0**（修复前 `SyntaxError: Unexpected token '}'`，exit 1）；断言首行 `(function () {`、次行 `"use strict";`、倒数第二行 `})();` | ✅ |
 | ST-49 | 静态资源完整性（防呆） | 检查 `web_static/` 三文件存在/非空/单末尾 LF、`index.html` 仅同源引用、零外部 URL、与基线内联内容 sha256 一致 | 全部通过；`app.js` 内容 sha256 `0fb916a6…`、`style.css` 内容 sha256 `d6e0c406…` 与 `git show refactor-baseline:…/index.html` 的内联内容**逐字节相同** | ✅ |
 
-**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **204 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
-自动化测试：`Ran 204 tests … OK`（见 §4.1 与 §13）。
+**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **214 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
+自动化测试：`Ran 214 tests … OK`（见 §4.1 与 §13）。
 > 注：下表 ST-01~ST-47 中出现的 `fact-0001` / `line-0001` / `cat-0002` 为 **v1（序号方案）历史记录**；C-06 迁移后同一行为以 UUIDv7 + 短前缀复现，见 §9。
 
 ---
@@ -99,9 +99,9 @@
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests -v
-…（204 个用例，全 ok）
+…（214 个用例，全 ok）
 ----------------------------------------------------------------------
-Ran 204 tests in 4.021s
+Ran 214 tests in 5.206s
 
 OK
 ```
@@ -308,7 +308,7 @@ python3 -V                     # 期望 3.9+（实测 3.13.3）
 python3 -c "import sqlite3; print(sqlite3.sqlite_version)"   # 期望 >= 3.38（需 JSON1）
 ```
 
-### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，204 用例）
+### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，214 用例）
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -696,7 +696,8 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 | 35 | `e1ae01e` | SELFTEST 记录真实 API 连续 5 次稳定证据 |
 | 36 | `976b30d` | C-10 M1 | **第 0 层会话分流**：session/title → divert_input（provider 标题优先、首条消息兜底、200/300 截断）、`extract_divert.py`（c10-divert-v1，严格 JSON）、运行接入（skip 推进水位/失败不推进且不中断、逐会话记录）；185→194 |
 | 37 | `3befae1`（C-10 M2） | **抽取 prompt 收紧 c10-extract-v2**：noise 六类/粒度规则/正反例、granularity+subject 校验与丢弃原因、候选 granularity/subject/prompt_version、runs.llm.prompt_version；194→197 |
-| 38 | **`c1f2db4`（C-10 M3）** | **会话级两阶段**：buffer/summary 去重/确定性排序/5 条上限；`c10-divert-v2`（项目进展算 extract）；197→204 |
+| 38 | `c1f2db4`（C-10 M3） | **会话级两阶段**：buffer/summary 去重/确定性排序/5 条上限；`c10-divert-v2`（项目进展算 extract）；197→204 |
+| 39 | **本 commit（C-10 M4）** | **config/state schema 2 + 迁移**；**修复 DSH 注入消息被当用户消息**（真实 38 会话 645→138 条）；204→214 |
 | 8 | 本文件 commit | README / SELFTEST 同步（§9.9 前端字段契约修复证据；用例 75） |
 
 ### 9.3 自动化测试（76 用例时点记录；C-07 后为 93 用例，见 §10）
@@ -1479,7 +1480,7 @@ README 与 manifest 版本一致: True
 
 ```
 $ python3 -m unittest discover -s tests
-Ran 204 tests in 4.021s
+Ran 214 tests in 5.206s
 OK
 $ python3 run.py --data-dir <tmp> extract status     # 关闭/同意/配置/待审/水位
 $ python3 run.py --data-dir <tmp> extract config --base-url ... --model ...
@@ -1711,3 +1712,36 @@ $ python3 run.py --data-dir /tmp/fasti-realtest extract
   都计入；确定性选择；单块 ≤5 不误伤；分流 v2 prompt 规则断言；mock「项目进展⇒extract 1 summary /
   纯排障⇒skip」。
 - **未做**：config schema2（M4）、state schema2 正式迁移（M4）、前端去自动触发（M5）。
+
+### 13.12 C-10 M4：schema 迁移 + 注入消息修复（已交付，等待验证）
+
+- **config 1→2 原子迁移**：删除 `auto_trigger_on_open` / `auto_trigger_min_interval_seconds`，
+  `schema_version=2`，保留 `llm`（含 api_key）/`consent`/其余 extract 配置；临时文件 + fsync +
+  rename，权限 0600；已是 2 且无旧键 ⇒ 不重写（幂等）；只读/写盘失败 ⇒ 内存迁移 +
+  `config_warning`，不崩；JSON 损坏 ⇒ 默认配置 + 告警不崩。
+- **实测迁移前后（临时目录，api_key 脱敏为 `****1234`）**：
+  ```
+  前：schema=1 | extract 键含 auto_trigger_on_open / auto_trigger_min_interval_seconds | 权限 0644
+  后：schema=2 | extract 旧键消失 | llm 全部保留 | consent 保留 | 权限 0600 | 幂等不再重写
+  ```
+- **state schema 2**：新 runs `schema_version=2` + `llm.prompts{divert,extraction,judgment}` +
+  `prompt_sha256`；候选带 granularity/subject/summary_subject_key/prompt_version；旧候选
+  （无新字段）queue/show/approve/reject 正常（读时补默认 null，不回写）；旧 runs 可读。
+- **高优先级 bug 修复（DSH 注入消息）**：`load_session` 仅接受 `user/message` 且
+  `source.kind=="user"`（常量 `USER_MESSAGE_SOURCE_KINDS`）；其他 kind/缺失 source 一律排除，
+  `divert_input.user_message_source_counts` 诊断；`first_user_message` 取第一条真实用户消息并
+  跳过 `<system-reminder>` / `Current runtime context` 开头（前 5 条内）。
+- **真实 38 会话统计（只读，未打印正文）**：
+  ```
+  全部 38 个会话文件：user/message(role=user) 645 → source.kind=user 138（与 Lead 预期 138 一致）
+  kind 分布：time-context 165 / user 138 / agent-message 77 / agent-instructions 76 /
+             subagent-settled 65 / runtime-context 57 / skill-catalog 48 / user-approval 8 /
+             compact-checkpoint 5 / tool-jobs 5 / model-selection 1
+  根会话 23 个，其中有真实用户消息 20 个；根会话 user_message_count 合计 394 → 123
+  （逐会话示例：59ee23cccef5 231→71；6eb798410b8f 26→12；ee45258670a9 11→6；
+    3fb19f3d30d9 8→3；fa1e50e305cb 4→1；其余多为 5→1/2）
+  ```
+- **测试（204→214，新增 10）**：config 迁移保留/权限/幂等/只读告警/损坏降级；旧候选
+  queue/show/approve/reject；旧 runs 可读；新 runs/candidate schema2 字段；混合 source.kind
+  只计 user、缺失 source 排除、first 跳过注入。
+- **未做**：前端去自动触发 / AC-18-10 反向断言（M5）。
