@@ -24,7 +24,9 @@ Fasti 把这些信息收拢成一份**可维护、可追溯、可迁移**的画�
 
 ## 当前状态
 
-**P0（最小闭环）已完成并通过 QA 验收（52/59 项通过，0 项失败，7 项需真人环境验证）。**
+**P0（最小闭环）已实现并通过 QA 功能验收：74 条验收标准中 67 条通过、0 条失败、7 条需真人或时间跨度验证。**
+
+> 整体 verdict 仍为 `fail`——依据 QA 契约，「关键验收项未验证不得默认通过」。**这代表验收尚未走完，不代表代码有问题。** 详见 [docs/PROJECT-STATUS.md](docs/PROJECT-STATUS.md)。
 
 当前能力：
 
@@ -124,7 +126,7 @@ workspace/
 ├── fasti/adapters/       # 界面层（可替换）
 │   ├── cli.py            #   命令行
 │   └── web.py            #   本机网页表单
-└── tests/                # 68 个测试
+└── tests/                # 115 个测试
 ```
 
 **分层约束**：核心层不得 import `argparse` / `http.server` / `sys.argv`，不得 `print`。界面层可替换——加一个新界面不需要改核心。
@@ -135,11 +137,11 @@ workspace/
 
 ```bash
 cd workspace
-python3 -m unittest discover -s tests    # 68 个测试
+python3 -m unittest discover -s tests    # 115 个测试
 python3 run.py verify --deep             # 数据完整性自检（7 项）
 ```
 
-代码规模：55 个源文件 / 约 7300 行 / 无文件超过 500 行。
+代码规模：55 个源文件 / 约 8900 行 / 无文件超过 500 行。
 
 ---
 

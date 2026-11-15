@@ -1,7 +1,7 @@
 # PMS 项目 · 子代理角色组
 
 四条角色，严格按角色契约运行，不扩展职责。
-**项目背景**：暂未确定；参考依据为 `docs/reference/` 目录下的资料（`PMS软件设计说明书.md`、`PMS设计评审意见.md`、`Agent-Memory-调研-2026-11.md`）。角色本身与具体项目无关，可在背景确定后直接接入。
+**项目背景**：已确定并锁定（见 `briefs/PMS-brief.md`）；参考依据为 `docs/reference/` 目录下的资料（`PMS软件设计说明书.md`、`PMS设计评审意见.md`、`Agent-Memory-调研-2026-11.md`）。角色本身与具体项目无关，可在背景确定后直接接入。
 
 ---
 
@@ -42,7 +42,7 @@ PMS/
 │   ├── SELFTEST.md                 # ← developer
 │   └── README.md                   # ← developer
 ├── briefs/                         # Lead 撰写的需求输入（角色只读）
-│   └── PMS-brief-v1.md
+│   └── PMS-brief.md
 ├── agents/                         # 角色定义（只读）
 └── docs/reference/                           # 项目参考材料（只读）
 ```
