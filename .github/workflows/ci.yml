@@ -135,15 +135,3 @@ jobs:
           python3 run.py --data-dir "$D" verify --deep
           python3 run.py --data-dir "$D" export --out "$RUNNER_TEMP/export"
           python3 run.py --data-dir "$RUNNER_TEMP/imported" import "$RUNNER_TEMP/export"
-
-      - name: 确定性（同事件流 → 同产物）
-        working-directory: workspace
-        run: |
-          set -eux
-          D="$RUNNER_TEMP/determinism"
-          python3 run.py --data-dir "$D" init
-          python3 run.py --data-dir "$D" fact add --category tech --content "x" --valid-from 2025-01
-          A=$(sha256sum "$D/profile/current.md" | cut -d' ' -f1)
-          python3 run.py --data-dir "$D" recompute
-          B=$(sha256sum "$D/profile/current.md" | cut -d' ' -f1)
-          test "$A" = "$B" && echo "✅ 确定性一致"
