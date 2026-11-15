@@ -1,7 +1,7 @@
 # Fasti · P0 自测记录（SELFTEST）
 
 > 角色：开发工程师（developer） · 日期：2026-11-09（初版）；2026-11-15 文档/死代码清理
-> 依据：`artifacts/architecture.md` **v1.7.1**（27 ADR）/ `artifacts/api-spec.yaml` **contract_version 1.4.0** / `artifacts/database-schema.sql` **schema_version 3** / `artifacts/product-spec.md` **v4.0**（15 US / 74 AC）
+> 依据：`artifacts/architecture.md` **v1.8**（ADR-028~031）/ `artifacts/api-spec.yaml` **contract_version 2.0.0** / `artifacts/database-schema.sql` **schema_version 4** / `artifacts/product-spec.md` **v5.1**（18 US / 102 AC）
 > 性质：**以下全部命令均已实际执行**，输出为实测粘贴（仅隐去临时路径中的随机后缀、个别时间戳随执行时间变化）。
 
 ---
@@ -87,8 +87,8 @@
 | ST-48 | AC-13-1~13-5（防呆） | `node --check fasti/adapters/web_static/app.js` + 断言 IIFE 首尾行 | 修复 R-F1 后 **exit 0**（修复前 `SyntaxError: Unexpected token '}'`，exit 1）；断言首行 `(function () {`、次行 `"use strict";`、倒数第二行 `})();` | ✅ |
 | ST-49 | 静态资源完整性（防呆） | 检查 `web_static/` 三文件存在/非空/单末尾 LF、`index.html` 仅同源引用、零外部 URL、与基线内联内容 sha256 一致 | 全部通过；`app.js` 内容 sha256 `0fb916a6…`、`style.css` 内容 sha256 `d6e0c406…` 与 `git show refactor-baseline:…/index.html` 的内联内容**逐字节相同** | ✅ |
 
-**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **116 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
-自动化测试：`Ran 116 tests … OK`（见 §4.1 与 §12）。
+**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **173 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
+自动化测试：`Ran 173 tests … OK`（见 §4.1 与 §13）。
 > 注：下表 ST-01~ST-47 中出现的 `fact-0001` / `line-0001` / `cat-0002` 为 **v1（序号方案）历史记录**；C-06 迁移后同一行为以 UUIDv7 + 短前缀复现，见 §9。
 
 ---
@@ -99,9 +99,9 @@
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests -v
-…（116 个用例，全 ok）
+…（173 个用例，全 ok）
 ----------------------------------------------------------------------
-Ran 116 tests in 1.472s
+Ran 173 tests in 2.857s
 
 OK
 ```
@@ -308,11 +308,11 @@ python3 -V                     # 期望 3.9+（实测 3.13.3）
 python3 -c "import sqlite3; print(sqlite3.sqlite_version)"   # 期望 >= 3.38（需 JSON1）
 ```
 
-### 4.1 一键自动化（覆盖 C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + v2 标识/短前缀/格式门/类别复活/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，116 用例）
+### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，173 用例）
 
 ```bash
 python3 -m unittest discover -s tests -v
-# 期望最后三行：Ran 116 tests in … / OK
+# 期望最后三行：Ran 173 tests in … / OK
 ```
 
 ### 4.2 端到端手工场景（照抄命令，对比输出）
@@ -459,7 +459,7 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 
 - 全部实现位于 `workspace/`，入口 `python3 run.py …`（或安装后的 `fasti …`）。
 - 运行方式与命令速览见 [`README.md`](README.md)。
-- 自测统计：**自动化 116/116 通过（见 §12；无 artifacts 环境同样 0 skip 全绿）；手工/端到端 49 条用例中 47 条完全通过、2 条「核心语义通过 + 真实环境待验」、0 失败**。
+- 自测统计：**自动化 173/173 通过（见 §13；无 artifacts 环境同样 0 skip 全绿）；手工/端到端 49 条用例中 47 条完全通过、2 条「核心语义通过 + 真实环境待验」、0 失败**。
 - **等待 QA 独立验证**：以上「完成」仅为开发侧自测结论，不代表项目验收通过；QA 应按 `artifacts/product-spec.md` 的 59 条 AC 独立复现并给出 `pass` / `fail` 判定。
 
 ---
@@ -677,7 +677,15 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 | 16 | `76c54ee` / `a044886` | README / SELFTEST 同步（§11 C-08 证据：真实 Tier2、CLI/HTTP 双路 AC-15-4/5、审计/导出；令牌口径勘误） |
 | 17 | **`ffff45a`** | **Bug 修复**：导出 README 格式版本改为从 `constants.FORMAT_VERSION` 动态生成 + importer warning 同步；回归测试（115 → 116） |
 | 18 | **`851d3e8`** | **清理**：删除死代码 `profile_text_for_status`；核心层过时版本表述（lifecycle/validate_*/model/profile）修正 |
-| 19 | 本文件 commit | README / SELFTEST 文档版本与过时引用清理（§12） |
+| 19 | `d368286` | README / SELFTEST 文档版本与过时引用清理（§12） |
+| 20 | `4078df2` | C-09 M1：配置（config.json/env 优先）+ DSH 根会话发现/zstd/分块（12 tests） |
+| 21 | `57554e6` | C-09 M2：过程状态水位/候选/运行记录 + 确定性 ID/幂等 + 运行锁（8） |
+| 22 | `adf88d7` | C-09 M3：LLM 客户端 + 两段 prompt + 严格 JSON 校验（9） |
+| 23 | `43973a5` | C-09 M4：确定性召回 full/retrieval/历史段/可解释性（5） |
+| 24 | `24506ea` | C-09 M5：两段式运行时 + 决策矩阵 + 自动写入 + 事件 v4 审计（12） |
+| 25 | `2a79213` | C-09 M6：CLI 9 命令 + web 端点 + 审核 UI/静态资源（6） |
+| 26 | `fc2b758` | C-09 M7：v3→v4 纯加性迁移测试（5） |
+| 27 | 本文件 commit | README / SELFTEST 同步（§13 C-09 证据与未覆盖项） |
 | 8 | 本文件 commit | README / SELFTEST 同步（§9.9 前端字段契约修复证据；用例 75） |
 
 ### 9.3 自动化测试（76 用例时点记录；C-07 后为 93 用例，见 §10）
@@ -1413,3 +1421,77 @@ README 与 manifest 版本一致: True
 | 用户数据 | 未触碰 `~/.fasti`（全部 `--data-dir` 临时目录） |
 
 **等待 QA 复验**：导出包 README 与 manifest 一致性、删除死代码后全量回归、文档版本表述。
+
+---
+
+## 13. C-09 变更（自动提取记忆，P1；两段式）· 2026-11-15
+
+> 依据：`briefs/PMS-brief.md` C-09（定稿）、architecture **ADR-028~031 / §15**、api-spec
+> `conventions.extract`（contract **2.0.0**）、schema **v4**。用户原话：「显然我懒得每天更新记忆」。
+
+### 13.1 实现里程碑（commit）
+
+| 里程碑 | commit | 内容 |
+|---|---|---|
+| M1 | `4078df2` | `extract_config.py`（config.json 0600 + env 优先 + consent/api_key 掩码）、`session_source.py`（DSH 根会话、zstd 优先/子进程、只取 user 消息、分块 ≤20/≤4000、单条 ≤1500） |
+| M2 | `57554e6` | `extract_state.py`（水位原子写、候选快照折叠/状态机、运行记录、确定性 candidate_id/evidence_key、运行锁 `.run.lock`、水位从事实证据重建） |
+| M3 | `adf88d7` | `extract_llm.py`（urllib 非流式 10s/60s、≤2 重试 1s/2s、2MiB、JSON 严格校验；A 段只发用户消息、B 段只看候选+召回；打码后发送） |
+| M4 | `43973a5` | `extract_recall.py`（full ≤8KB 含关闭类别 / retrieval top-K ≤20/≤6KB、历史段按需 ≤10/≤2KB、评分与原因码、纯确定性） |
+| M5 | `24506ea` | `extract_quality.py`（系统相似 C-08+中文保守检查、置信度、决策矩阵）、两段式运行时 `services/extract.py`、自动写入复用 `fact.add`（含 C-08）、事件/读模型/DDL **v4**（source=auto_extract + extraction 审计）、`migrate_v3_to_v4.py` |
+| M6 | `2a79213` | CLI 9 命令、web `/api/extract/*` 9 端点、`web_static/extract.js` 审核 UI + 静态白名单 4 条 |
+| M7 | `fc2b758` | v3→v4 纯加性迁移测试（dry-run/幂等/旧格式拒绝/派生文本 sha256 不变） |
+
+测试 **116 → 173**（新增 57 条）：M1 12 / M2 8 / M3 9 / M4 5 / M5 12 / M6 6 / M7 5。
+
+### 13.2 关键边界实测（mock LLM，无外部调用）
+
+- **A 段 prompt 无库数据**：`test_a_prompt_no_database_data` 断言抽取请求不含既有事实内容、
+  `fact_id`、`召回`；B 段判定请求所含召回事实与候选均存在（`test_auto_write_high_confidence`）。
+- **A 段只发用户消息**：session 中 assistant/tool 消息不出现（M1 会话解析测试 + 两段 prompt 测试）。
+- **高置信自动写**：extraction 0.9 + relation new 0.9 + 系统无相似 + auto_write ⇒ 写入
+  `source=auto_extract` + `extraction`；history「↳ 来源：自动提取（会话…候选…；召回 full）」、
+  `fact.show`、导出 entities 均可见（M5/M6 测试）。
+- **保守侧**：mock 判 new 0.95 但系统中文 bigram 命中（AC-16-12「老家湖北黄冈」vs「我出生在湖北黄冈」）
+  ⇒ `system.similar=true`、`decision.reason_code=layer_mismatch`、**不自动写**；update/conflict、
+  low_confidence、auto_write=false、C-08 命中、超限均转审核。
+- **隐私**：敏感串在 A 段 prompt 已打码；候选含敏感 ⇒ `sensitive_skipped` 丢弃；runs.jsonl
+  无原文/密钥；config/status 只返回 `api_key_masked`；`enabled=false` ⇒ 所有入口 `EXTRACT_DISABLED`，
+  web 测试断言关闭时 mock 零请求。
+- **幂等/失败**：重复 run 无新消息 ⇒ 0 消息/0 候选；新会话 seq=1 继续；删除水位 ⇒
+  `watermark_rebuilt=true` 且 evidence_key 去重不重复写；LLM 非法 JSON ⇒ 整批失败、run failed、
+  水位不动、不写候选；坏会话跳过（partial）其余继续。
+- **迁移 v3→v4**（纯加性）：只改首事件 format_version；迁移后 events 与等价 v4 store **逐字节一致**；
+  除首事件外其余事件**逐字节不变**；recompute/render 后 profile/dist sha256 与迁移前一致；
+  `verify --deep` 通过；二次运行幂等；v2 目录拒绝。
+
+### 13.3 验证
+
+```
+$ python3 -m unittest discover -s tests
+Ran 173 tests in 2.857s
+OK
+$ python3 run.py --data-dir <tmp> extract status     # 关闭/同意/配置/待审/水位
+$ python3 run.py --data-dir <tmp> extract config --base-url ... --model ...
+$ python3 run.py --data-dir <tmp> extract consent --show --accept
+$ python3 run.py --data-dir <tmp> extract queue / runs
+$ python3 run.py verify --deep                       # 7/7 PASS（既有 P0 检查不变）
+文件规模：82 文件 / 14060 行；无文件 >500（web.py 470+18=488、extract.py 469、app.js 479）
+```
+
+### 13.4 未覆盖项（如实说明）
+
+| 项 | 原因 | 替代验证 |
+|---|---|---|
+| 真实外部 LLM 调用 | 硬约束：测试必须 mock；不得真调外部 API/不得触碰用户 key | 本地 mock OpenAI 兼容传输（注入 `extract_llm.set_transport`）+ 两段 prompt 断言 |
+| 用户 `~/.fasti` 真实数据 | 用户活数据（含真实 config/api_key），禁止触碰 | 全部 `--data-dir` 临时目录 + 伪造 `dsh_home` 会话；迁移 dry-run 仅在副本演练 |
+| zstd 二进制/stdlib 实解压 | 测试环境用 `allow_plain` fixture（同一解析路径） | M1 覆盖 zstd 缺失 ⇒ `EXTRACT_ZSTD_UNAVAILABLE`；真实压缩路径依赖部署环境（AS-31） |
+| web「后台线程 + 202/轮询」 | 实现为同步执行后 200 返回（core 同步语义；页面体验等价） | M6 web run 端点实测；前端轮询简化为同步刷新（不阻塞 AC-16-1 语义） |
+| 28 条 AC 的逐条 QA 独立复测 | QA 门禁职责 | 本文件按 AC 矩阵提供入口（§15.11/§15.13）；等待 QA 独立验证 |
+| 迁移 v2→v3→v4 联跑 | 既有 C-07 测试已链式覆盖 | `test_migrate_v2_to_v3` 已更新为 v2→v3→v4 链 |
+
+### 13.5 交付声明
+
+- 全部实现位于 `workspace/`；`artifacts/`、`briefs/` 未修改；**format 4 / schema 4 / contract 2.0.0**。
+- **未触碰用户 `~/.fasti`**；真实数据迁移（v3→v4）由 Lead/用户执行 `scripts/migrate_v3_to_v4.py`（先备份 + dry-run）。
+- **等待 QA 独立验证**：重点 AC-16-1~14 / AC-17-1~5 / AC-18-1~9；两段 prompt 断言、auto_write 决策矩阵、
+  召回 full/retrieval、水位幂等/重建、隐私打码与 runs 无原文、v3→v4 纯加性迁移。

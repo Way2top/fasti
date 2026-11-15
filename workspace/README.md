@@ -66,7 +66,7 @@ fasti --help
 | 第三方包 | **无**。不 `pip install` 任何依赖；全程无网络调用 |
 | 文件锁 | `flock`（macOS/Linux）；NFS 等不支持 `flock` 的文件系统不保证（ADR-015） |
 
-依赖自检：`python3 -m unittest discover -s tests -v`（**116 个用例**：C-08 相似检测（两级规则/真实重复对/令牌绑定/审计）+ v3 时间语义、UUIDv7/短前缀/格式门/类别复活/持久化守卫 + 写路径原子性 + 前端字段契约 + v2→v3 迁移强回归 + 分层/确定性/导出导入/CLI/网页/静态资源守卫，含「禁止 import UI 模块 / 禁止 print / 禁止第三方依赖」的分层断言）。
+依赖自检：`python3 -m unittest discover -s tests -v`（**173 个用例**：C-09 自动提取（会话解析/zstd/水位幂等/两段 LLM prompt/召回/决策矩阵/审核/隐私/迁移）+ C-08 防重复 + v3 时间语义/迁移 + UUIDv7/短前缀/格式门/持久化守卫 + 写路径原子性 + 前端字段契约 + 分层/确定性/导出导入/CLI/网页/静态资源守卫）。
 
 ---
 
@@ -86,7 +86,9 @@ workspace/
 │   │   │   ├── categories.py       # list/add/enable/delete_category
 │   │   │   ├── views.py            # profile / profile_at / history / recompute / render
 │   │   │   ├── lifecycle.py        # init / status / export / import / install_hosts
-│   │   │   └── verify.py           # verify + 私有检查函数
+│   │   │   ├── verify.py           # verify + 私有检查函数
+│   │   │   ├── extract.py          # C-09 两段式运行/配置/状态
+│   │   │   └── extract_review.py   # C-09 候选审核（approve/reject）
 │   │   ├── category_templates.py   # _load_templates（与 templates/ 同级）
 │   │   ├── store.py                # 数据目录/事件读写/原子写/flock 单写锁/备份
 │   │   ├── fold.py                 # 纯函数折叠：事件流 → ReadModel
@@ -103,6 +105,8 @@ workspace/
 │   │   ├── status.py               # 新鲜度/外部篡改/宿主接入状态
 │   │   ├── install.py              # install_hosts（全局位置 / Cursor 降级）
 │   │   ├── ids.py clock.py errors.py constants.py similarity.py
+│   │   ├── extract_config.py extract_privacy.py extract_llm.py
+│   │   ├── extract_recall.py extract_quality.py extract_state.py session_source.py
 │   │   ├── templates/categories.json        # 7 个默认模板类别（随包只读）
 │   │   └── schema/database-schema.sql       # 与 artifacts/database-schema.sql 逐字节相同的副本
 │   └── adapters/                   # 界面适配层（只调用 fasti.core.api；ADR-022）
@@ -111,15 +115,18 @@ workspace/
 │       ├── cli_io.py               # 输出上下文 + text/json 呈现 + 退出码错误输出
 │       ├── cli_cmds_content.py     # fact / category / profile 命令实现
 │       ├── cli_cmds_store.py       # init/status/render/export/import/verify/web/install-host
+│       ├── cli_cmds_extract.py     # extract 9 命令
+│       ├── web_extract.py          # /api/extract/* 9 端点
+│       ├── static_files.py         # 同源静态资源白名单（4 条只读路由）
 │       ├── web.py                  # 本机网页表单后端（127.0.0.1 + 令牌 + Origin/Host 校验）
-│       ├── static_files.py         # 同源静态资源白名单（3 条只读路由）
-│       └── web_static/             # index.html + style.css + app.js（零外部请求）
-├── tests/                          # _base.py + 18 个 test_*.py + fixtures/*.json（116 个用例）
+│       └── web_static/             # index.html + style.css + app.js + extract.js（零外部请求）
+├── tests/                          # _base.py + 25 个 test_*.py + fixtures/*.json（173 个用例）
 └── scripts/                        # 一次性迁移工具（stdlib、离线，不随产品命令暴露）
-    └── migrate_v2_to_v3.py         # v2→v3 事件改写器（--dry-run/原子写回/幂等）
+    ├── migrate_v2_to_v3.py         # v2→v3 事件改写器
+    └── migrate_v3_to_v4.py         # v3→v4 纯加性迁移（--dry-run/原子/幂等）
 ```
 
-**为什么 `core/schema/database-schema.sql` 有一份副本**：`verify` 的 `sql.constraints` 检查与导入流水线第 4 步需要把折叠结果载入内存 SQLite 执行同一份 DDL。该文件是从 `artifacts/database-schema.sql` **逐字节复制**的只读副本（schema_version 3，sha256 `944f85899f8407a1d27d7aafda3a82f2a027886736c68ecdba9f00ae6c877e9b`；含 C-08 `fact.duplicate_confirmation`），便于离线运行；`artifacts/` 未被修改。也可用环境变量 `FASTI_SCHEMA_PATH` 指向其他 DDL。
+**为什么 `core/schema/database-schema.sql` 有一份副本**：`verify` 的 `sql.constraints` 检查与导入流水线第 4 步需要把折叠结果载入内存 SQLite 执行同一份 DDL。该文件是从 `artifacts/database-schema.sql` **逐字节复制**的只读副本（schema_version 4，sha256 `874761820a9d2c4fa917d2fedb3d47ddec6f1d1c2b8886354bfdc76952647e97`；含 C-09 `fact.source`/`fact.extraction`），便于离线运行；`artifacts/` 未被修改。也可用环境变量 `FASTI_SCHEMA_PATH` 指向其他 DDL。
 
 ---
 
@@ -273,11 +280,11 @@ python3 run.py profile at --at 2026-06            # 粗粒度 = 2026-06-01T00:00
 python3 run.py profile at --at 2026-11-09T23:50   # 可区分同月内多段
 ```
 
-### 9.3 格式版本与迁移（ADR-024 / ADR-026）
+### 9.3 格式版本与迁移（ADR-024 / ADR-026 / ADR-031）
 
-- 事件与导出 `format_version: 3`；读取模型 DDL `schema_version: 3`；`contract_version = 1.4.0`。
+- 事件与导出 `format_version: 4`；读取模型 DDL `schema_version: 4`；`contract_version = 2.0.0`。
 - **不向后兼容**：
-  - v1/v2 数据目录 ⇒ `STORE_FORMAT_UNSUPPORTED`（退出码 5，消息指向 architecture.md §13.5 与迁移脚本）；
+  - v1/v2/v3 数据目录 ⇒ `STORE_FORMAT_UNSUPPORTED`（退出码 5，消息指向迁移脚本）；
   - v1/v2 导出 bundle ⇒ `IMPORT_UNSUPPORTED_FORMAT_VERSION`（退出码 4）。
 - **v2 → v3 一次性迁移**（真实数据带 `recorded_at`/真实顺序；不提供自动降级）：
   1. 停写 → **双备份**：`mv ~/.fasti ~/.fasti.v2-backup` + `fasti export --data-dir <副本>` 留档；
@@ -320,12 +327,43 @@ python3 run.py fact add --category tech --content "主力语言是C++" --valid-f
         --confirm-duplicate <TOKEN>
 ```
 
+### 9.4 自动提取（C-09，P1；两段式）
+
+- **数据源**：`~/.dsh/sessions/*/*/session.v4.jsonl.zstd` 根会话；只取 user 消息；
+  stdlib zstd（Python 3.14+）优先，否则 `zstd -dc -- <path>`；zstd 缺失整次失败不静默跳过。
+- **两段式**：A 段（抽取）LLM **只发用户消息、不接触数据库**；B 段（判定）LLM 只看候选 +
+  确定性召回（全库当前事实 ≤8KB 全量含关闭类别，>8KB top-K ≤20/≤6KB；历史段按需）；
+  决策矩阵：高置信（extraction≥0.85 + new + relation≥0.80 + 系统无相似 + auto_write 开 +
+  未超限）自动写入，其余进审核；任何一层认为已有关系 ⇒ 不自动写（保守侧）。
+- **写入**：自动/审核通过都走既有 `fact.add`/`fact.change`（含 C-08 防重复）；事件新增
+  `source=auto_extract` + 可选 `extraction` 审计 → 读模型/历史「↳ 来源：自动提取」/导出可见。
+- **过程状态**：候选/水位/运行记录在 `<data-dir>/state/extract/`（不进 events、不导出、可删重建）。
+- **隐私**：一次性同意（`extract consent`）；敏感正则打码默认开；运行记录不含原文/密钥；
+  `extract.enabled=false` 时所有入口在任何外呼前返回 `EXTRACT_DISABLED`。
+- **配置**：`<data-dir>/config.json`（0600，不导出）+ 环境变量优先
+  `FASTI_LLM_BASE_URL/MODEL/API_KEY`、`FASTI_EXTRACT_DISABLED=1`；api_key 只返回 masked。
+- **迁移**：v3→v4 **纯加性**：只改首事件 `format_version`，其余事件逐字节不变；
+  `scripts/migrate_v3_to_v4.py --dry-run` 演练，失败不触碰 events；成功后 recompute/render。
+
+```bash
+python3 run.py extract status                       # 开关/同意/配置/待审/水位
+python3 run.py extract consent --show --accept      # 一次性隐私告知
+python3 run.py extract config --base-url <URL> --model <NAME>   # api_key 从 stdin（不回显）
+python3 run.py extract                              # 手动增量提取
+python3 run.py extract queue                        # 待审候选
+python3 run.py extract approve <cand-id> --change-type new|evolve|correct
+python3 run.py extract runs                         # 运行记录（无原文/密钥）
+python3 scripts/migrate_v3_to_v4.py --data-dir <副本> --dry-run
+```
+
+---
+
 ---
 
 ## 10. 验证方式
 
 ```bash
-# A. 自动化自测（116 个用例；含 C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约 + 分层/确定性/导出导入/CLI/网页/静态资源）
+# A. 自动化自测（173 个用例；含 C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约 + 分层/确定性/导出导入/CLI/网页/静态资源）
 python3 -m unittest discover -s tests -v
 
 # B. 端到端自检（存储不变量 + 内存 SQLite 约束 + 确定性 + 三产物一致 + 导出导入往返）
@@ -374,3 +412,6 @@ python3 run.py --data-dir "$T" verify --deep && echo SMOKE-OK
 8. **v1/v2 数据不兼容**：用户旧数据（format_version 1 或 2）会被明确拒绝；v2→v3 用 `scripts/migrate_v2_to_v3.py`（§9.3），v1 需先按 architecture §12.5 升级。本轮未触碰用户 `~/.fasti`（真实数据迁移由 Lead 执行）。
 9. **短 ID 位数**：默认 12 位（= 完整 48-bit 时间戳，不同毫秒必不同）；仅同毫秒创建或 4–11 位更短前缀会歧义（正确报错列候选）。极高频批量（同毫秒多个）录入时需加长前缀或用 `--json` 完整 ID。
 10. **UUIDv7 时间序依赖本机时钟**（AS-17）：时钟回拨只影响排序近似，唯一性不受影响；`recorded_at` 仍是审计真相。
+14. **C-09 依赖外部 LLM（联网）**：只有用户显式启用并同意后，提取路径才会调用所配置的 LLM API（内容离开本机）；关闭后所有入口不发外呼（其余功能仍零网络）。未配置/网络失败/结构非法 ⇒ 整批失败、不写候选、水位不动。
+15. **C-09 过程状态不可导出**：候选/水位/运行记录在 `state/extract/`（隐私 + P1 权衡）；换机后水位由事实 `extraction` 证据重建，候选队列不迁移；zstd 解压依赖系统 zstd 或 Python ≥3.14。
+16. **C-09 召回边界**：字面差异极大的语义重复可能漏召回（R-14/AS-28），由中文保守检查 + 审核 + 关闭 auto_write 兜底；不做自动合并（P1 外）。
