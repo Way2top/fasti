@@ -133,9 +133,9 @@ class TestExtractCli(BaseStoreTest):
         with open(os.path.join(ROOT, "fasti", "adapters", "web_static", "extract.js"),
                   encoding="utf-8") as handle:
             script = handle.read()
-        self.assertIn("auto_trigger_on_open", script)          # AC-16-1
-        self.assertIn("web_open", script)
-        self.assertIn("fasti-extract-last-trigger", script)     # 节流持久化
+        self.assertNotIn("auto_trigger_on_open", script)       # AC-18-10
+        self.assertNotIn("web_open", script)
+        self.assertNotIn("fasti-extract-last-trigger", script)  # 无 localStorage 节流
         self.assertIn("recall_details", script)                 # AC-16-2/11
         self.assertIn("reasons", script)
         self.assertIn("message_ids", script)                    # AC-17-1 来源证据
