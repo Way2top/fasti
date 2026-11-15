@@ -12,6 +12,7 @@ import time
 from .. import clock
 from .. import constants
 from .. import errors
+from .. import extract_divert
 from .. import extract_config
 from .. import extract_llm
 from .. import extract_privacy
@@ -23,6 +24,11 @@ from .. import session_source
 from .. import store
 from . import extract_review
 from . import facts
+from . import extract_sessionops as ops
+from .extract_sessionops import (
+    _base_url_host, _daily_auto_writes, _dedupe_index, _empty_counters,
+    _entry_for_fact, _recall_entries_for,
+    advance_watermark, diversion_record)
 from .extract_review import _extraction_payload
 from ._shared import _load_model
 
@@ -112,84 +118,10 @@ def list_extract_runs(data_dir, limit=20):
 
 
 # ---------------------------------------------------------------- 运行
-def _empty_counters():
-    return {"sessions_seen": 0, "sessions_processed": 0, "sessions_skipped": 0,
-            "messages_processed": 0, "candidates_created": 0, "auto_written": 0,
-            "queued": 0, "duplicates": 0, "sensitive_skipped": 0, "errors": 0,
-            "dropped_invalid": 0,
-            "drop_reasons": {"invalid_candidate_structure": 0,
-                             "invalid_category_key": 0, "invalid_evidence": 0}}
-
-
-def _base_url_host(cfg):
-    base_url = (cfg.get("llm", {}).get("base_url") or "")
-    return base_url.split("://", 1)[-1].split("/", 1)[0] if base_url else None
-
-
-def _daily_auto_writes(data_dir):
-    from .. import clock as clock_module
-    today = clock_module.now_local().strftime("%Y-%m-%d")
-    count = 0
-    for run in extract_state.load_runs(data_dir, 100):
-        if str(run.get("started_at") or "").startswith(today):
-            count += int((run.get("counters") or {}).get("auto_written") or 0)
-    return count
-
-
-def _entry_for_fact(model, fact_id):
-    fact = model.fact(fact_id)
-    if fact is None:
-        return None
-    line = model.lines[fact["line_id"]]
-    category = model.category(line["category_key"])
-    return {"fact_id": fact["fact_id"], "line_id": fact["line_id"],
-            "category_key": line["category_key"], "kind": "current",
-            "content": fact["content"], "valid_from": fact["valid_from"],
-            "valid_to": fact["valid_to"],
-            "disabled": bool(category and not category["enabled"])}
-
-
-def _recall_entries_for(model, recall_result):
-    entries = []
-    for fact_id in (recall_result.get("recalled_fact_ids") or []):
-        entry = _entry_for_fact(model, fact_id)
-        if entry:
-            entries.append(entry)
-    for fact_id in (recall_result.get("historical_fact_ids") or []):
-        fact = model.fact(fact_id)
-        if fact is None:
-            continue
-        line = model.lines[fact["line_id"]]
-        category = model.category(line["category_key"])
-        entries.append({"fact_id": fact["fact_id"], "line_id": fact["line_id"],
-                        "category_key": line["category_key"], "kind": "historical",
-                        "content": fact["content"], "valid_from": fact["valid_from"],
-                        "valid_to": fact["valid_to"],
-                        "disabled": bool(category and not category["enabled"])})
-    return entries
-
 def resolve_extract_candidate(data_dir, candidate_id, action, patch=None,
                               confirm_token=None):
     return extract_review.resolve_extract_candidate(
         data_dir, candidate_id, action, patch, confirm_token)
-
-def _dedupe_index(model, data_dir):
-    """evidence_key → existing_fact_id（来自既有事实 extraction）+ 已接受候选。"""
-    index = {}
-    for fact in model.all_facts():
-        extraction = fact.get("extraction")
-        if not extraction:
-            continue
-        key = extract_state.evidence_key_for(
-            extraction.get("session_id"), extraction.get("message_ids") or [],
-            fact["content"])
-        index[key] = fact["fact_id"]
-    for candidate in extract_state.load_candidates(data_dir).values():
-        key = (candidate.get("dedupe") or {}).get("evidence_key")
-        if key and candidate.get("status") in ("pending", "approved", "duplicate"):
-            index.setdefault(key, (candidate.get("write") or {}).get("fact_id"))
-    return index
-
 
 def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
                 max_messages=None):
@@ -201,6 +133,8 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
     run_id = ids.new_uuid7()
     started_at = clock.now_recorded_at()
     counters = _empty_counters()
+    counters.update({"sessions_entered_extraction": 0, "divert_extract": 0,
+                     "divert_skip": 0, "divert_failed": 0})
     run_errors = []
     fatal_error = None
     sessions_summary = []
@@ -224,6 +158,7 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
     sources = extract_cfg.get("sources") or {}
     dsh_home = sources.get("dsh_home") or "~/.dsh"
     allow_plain = bool(sources.get("allow_plain"))
+    sensitive = bool(extract_cfg.get("sensitive_filter", True))
     paths = session_source.discover_sessions(dsh_home, allow_plain=allow_plain)
     with extract_state.run_lock(data_dir):
         for path in paths:
@@ -257,6 +192,29 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
                 sessions_summary.append({"session_id": session["session_id"],
                                          "status": "no-new-messages"})
                 continue
+            divert_input = session.get("divert_input") or {}
+            try:
+                diversion = extract_divert.divert_session(cfg, divert_input, sensitive)
+            except errors.CoreError as exc:
+                counters["divert_failed"] += 1
+                counters["errors"] += 1
+                run_errors.append({"code": exc.code, "safe_detail": exc.message[:200]})
+                sessions_summary.append(
+                    diversion_record(session, divert_input, "divert_failed",
+                                     "skip", exc.message[:120], exc.code))
+                continue  # 失败不推进水位，下次重试；不中断整次运行
+            llm_calls += 1
+            if diversion["decision"] == "skip":
+                counters["divert_skip"] += 1
+                if not dry_run:
+                    advance_watermark(data_dir, watermarks, session, path,
+                                      new_messages, run_id)
+                sessions_summary.append(
+                    diversion_record(session, divert_input, "diversion_skip",
+                                     "skip", diversion["reason"]))
+                continue
+            counters["divert_extract"] += 1
+            counters["sessions_entered_extraction"] += 1
             counters["sessions_processed"] += 1
             try:
                 chunks = session_source.chunk_messages(
@@ -283,23 +241,13 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
                         or exc.code in ("EXTRACT_ZSTD_UNAVAILABLE",):
                     fatal_error = exc
                 break
-            if not dry_run and new_messages:
-                last = new_messages[-1]
-                watermarks["sessions"][session["session_id"]] = {
-                    "path": path,
-                    "last_seq": max(message["seq"] for message in new_messages),
-                    "last_message_id": last["message_id"],
-                    "last_event_sha256": last["event_sha256"],
-                    "processed_user_messages": (watermark.get("processed_user_messages") or 0)
-                    + len(new_messages),
-                    "updated_at": clock.now_recorded_at(),
-                    "run_id": run_id,
-                }
-                watermarks["updated_at"] = clock.now_recorded_at()
-                extract_state.save_watermarks(data_dir, watermarks)
-            sessions_summary.append({"session_id": session["session_id"],
-                                     "status": "processed",
-                                     "messages": len(new_messages)})
+            if not dry_run:
+                advance_watermark(data_dir, watermarks, session, path,
+                                  new_messages, run_id)
+            processed_record = diversion_record(
+                session, divert_input, "processed", "extract", diversion["reason"])
+            processed_record["messages"] = len(new_messages)
+            sessions_summary.append(processed_record)
     recall_summary = {"mode": recall_mode or "full", "corpus_bytes": corpus_bytes,
                       "candidates": counters["candidates_created"],
                       "recalled": recalled_total, "truncated": any_truncated}

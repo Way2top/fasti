@@ -19,6 +19,12 @@ from . import errors
 SESSION_SUFFIX = ".jsonl.zstd"
 PLAIN_SUFFIX = ".jsonl"
 TRUNCATION_MARKER = "…[TRUNCATED]"
+
+
+def _truncate(text, limit):
+    if len(text) <= limit:
+        return text, False
+    return text[:limit] + TRUNCATION_MARKER, True
 _MAX_DECOMPRESSED = 64 * 1024 * 1024
 _ZSTD_STDERR_LIMIT = 4096
 
@@ -162,6 +168,24 @@ def load_session(path, allow_plain=False):
         session_id = os.path.basename(directory) or hashlib.sha256(
             path.encode("utf-8")).hexdigest()[:16]
     cwd = _first_value(header_data, ("cwd", "workingDirectory", "workspace"))
+    titles = []
+    title_kinds_seen = []
+    for _line_number, _raw, event in events:
+        if event.get("type") != "session/title":
+            continue
+        data = event.get("data") if isinstance(event.get("data"), dict) else {}
+        title = data.get("title")
+        source = data.get("source") if isinstance(data.get("source"), dict) else {}
+        kind = source.get("kind")
+        if kind:
+            title_kinds_seen.append(kind)
+        if isinstance(title, str) and title.strip():
+            titles.append((kind, title.strip()))
+    provider_title = None
+    for kind, title in reversed(titles):
+        if kind == "provider":
+            provider_title = title
+            break
     messages = []
     ordinal = 0
     max_seq = 0
@@ -186,12 +210,31 @@ def load_session(path, allow_plain=False):
             "ordinal": ordinal,
             "text": text,
         })
+    first_text = messages[0]["text"] if messages else ""
+    first_message, first_truncated = _truncate(
+        first_text, constants.EXTRACT_FIRST_MESSAGE_MAX_CHARS)
+    title_text = None
+    title_truncated = False
+    title_source = "first_message"
+    if provider_title is not None:
+        title_text, title_truncated = _truncate(
+            provider_title, constants.EXTRACT_TITLE_MAX_CHARS)
+        title_source = "provider"
     return {
         "session_id": str(session_id),
         "cwd": cwd,
         "path": path,
         "max_seq": max_seq,
         "messages": messages,
+        "divert_input": {
+            "title": title_text,
+            "title_source": title_source,
+            "title_truncated": title_truncated,
+            "first_user_message": first_message,
+            "first_message_truncated": first_truncated,
+            "user_message_count": len(messages),
+            "title_kinds_seen": title_kinds_seen,
+        },
     }
 
 

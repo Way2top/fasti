@@ -175,6 +175,9 @@ class TestExtractWeb(BaseStoreTest):
             def __call__(inner, url, headers, body, timeout):
                 payload = json.loads(body.decode("utf-8"))
                 system = payload["messages"][0]["content"]
+                if "分流" in system:
+                    return 200, _envelope({"decision": "extract",
+                                           "reason": "含个人信息"})
                 return 200, _envelope(self.extraction if "抽取" in system
                                       else self.judgments)
         extract_llm.set_transport(Mock())

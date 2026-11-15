@@ -44,6 +44,9 @@ class MockLlm(object):
         payload = json.loads(body.decode("utf-8"))
         system = payload["messages"][0]["content"]
         self.requests.append(payload)
+        if "分流" in system:
+            return 200, _envelope(json.dumps({"decision": "extract",
+                                              "reason": "含个人信息"}, ensure_ascii=False))
         if "抽取" in system:
             return 200, _envelope(json.dumps(self.extraction, ensure_ascii=False))
         if isinstance(self.judgments, Exception):
@@ -137,7 +140,7 @@ class TestExtractRuntime(ExtractRuntimeBase):
         self.assertEqual(exported_fact["extraction"]["candidate_id"], candidate_id)
         # A 段请求不含库数据（B 段才含召回）
         extract_request = [item for item in mock.requests
-                           if "抽取" in item["messages"][0]["content"]][0]
+                           if "可用类别" in item["messages"][0]["content"]][0]
         self.assertNotIn("主力语言：Python",
                          json.dumps(extract_request, ensure_ascii=False))
         self.assertFalse(os.path.exists(
@@ -222,7 +225,9 @@ class TestExtractRuntime(ExtractRuntimeBase):
         self.assertEqual(run["counters"]["drop_reasons"]["invalid_category_key"], 1)
         self.assertEqual(run["counters"]["dropped_invalid"], 1)
         # A 段 prompt 含类别 schema（key/显示名），但不含任何事实内容
-        request = json.dumps(mock.requests[0], ensure_ascii=False)
+        request = json.dumps([item for item in mock.requests
+                              if "可用类别" in item["messages"][0]["content"]][0],
+                             ensure_ascii=False)
         self.assertIn("tech / 技术背景", request)
         self.assertIn("goals / 长期目标", request)
 
@@ -239,7 +244,7 @@ class TestExtractRuntime(ExtractRuntimeBase):
                      "notes": ""}
         run, mock = self._run(extraction, judgments)
         extract_request = [item for item in mock.requests
-                           if "抽取" in item["messages"][0]["content"]][0]
+                           if "可用类别" in item["messages"][0]["content"]][0]
         sent = json.dumps(extract_request, ensure_ascii=False)
         self.assertIn("tech / 技术背景", sent)          # 类别 schema 必须注入
         self.assertNotIn("数据库里的秘密事实", sent)     # 事实内容不得出现
@@ -261,7 +266,7 @@ class TestExtractRuntime(ExtractRuntimeBase):
                      "notes": ""}
         run, mock = self._run(extraction, judgments)
         extract_call = [item for item in mock.requests
-                        if "抽取" in item["messages"][0]["content"]][0]
+                        if "可用类别" in item["messages"][0]["content"]][0]
         judge_call = [item for item in mock.requests
                       if "判定" in item["messages"][0]["content"]][0]
         self.assertEqual(extract_call["max_tokens"], 400 + 300 * 3)
@@ -276,6 +281,9 @@ class TestExtractRuntime(ExtractRuntimeBase):
             def __call__(self, url, headers, body, timeout):
                 payload = json.loads(body.decode("utf-8"))
                 system = payload["messages"][0]["content"]
+                if "分流" in system:
+                    return 200, _envelope(json.dumps({"decision": "extract",
+                                                      "reason": "含个人信息"}))
                 if "抽取" in system:
                     return 200, _envelope(json.dumps({"candidates": [
                         {"content": "我会用 Rust 写服务", "category_key": "tech",
@@ -336,7 +344,9 @@ class TestExtractRuntime(ExtractRuntimeBase):
         run, mock = self._run(extraction, {"judgments": [], "notes": ""})
         self.assertEqual(run["counters"]["sensitive_skipped"], 1)
         self.assertEqual(run["counters"]["auto_written"], 0)
-        sent = json.dumps(mock.requests[0], ensure_ascii=False)
+        sent = json.dumps([item for item in mock.requests
+                           if "可用类别" in item["messages"][0]["content"]][0],
+                          ensure_ascii=False)
         self.assertNotIn("sk-abcdefghijklmnop123456", sent)
         self.assertIn("[REDACTED", sent)
         runs_text = open(os.path.join(self.data_dir, "state", "extract", "runs.jsonl"),
@@ -350,6 +360,10 @@ class TestExtractRuntime(ExtractRuntimeBase):
 
         class BadTransport(object):
             def __call__(self, url, headers, body, timeout):
+                system = json.loads(body.decode("utf-8"))["messages"][0]["content"]
+                if "分流" in system:
+                    return 200, _envelope(json.dumps({"decision": "extract",
+                                                      "reason": "含个人信息"}))
                 return 200, _envelope("{not json")
         extract_llm.set_transport(BadTransport())
         with self.assertRaises(errors.CoreError) as ctx:
@@ -457,7 +471,7 @@ class TestExtractRuntime(ExtractRuntimeBase):
                      "notes": ""}
         run, mock = self._run(extraction, judgments)
         extract_requests = [item for item in mock.requests
-                            if "抽取" in item["messages"][0]["content"]]
+                            if "可用类别" in item["messages"][0]["content"]]
         self.assertGreaterEqual(len(extract_requests), 1)
         for request in extract_requests:
             sent = json.dumps(request, ensure_ascii=False)
