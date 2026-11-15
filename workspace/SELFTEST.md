@@ -87,8 +87,8 @@
 | ST-48 | AC-13-1~13-5（防呆） | `node --check fasti/adapters/web_static/app.js` + 断言 IIFE 首尾行 | 修复 R-F1 后 **exit 0**（修复前 `SyntaxError: Unexpected token '}'`，exit 1）；断言首行 `(function () {`、次行 `"use strict";`、倒数第二行 `})();` | ✅ |
 | ST-49 | 静态资源完整性（防呆） | 检查 `web_static/` 三文件存在/非空/单末尾 LF、`index.html` 仅同源引用、零外部 URL、与基线内联内容 sha256 一致 | 全部通过；`app.js` 内容 sha256 `0fb916a6…`、`style.css` 内容 sha256 `d6e0c406…` 与 `git show refactor-baseline:…/index.html` 的内联内容**逐字节相同** | ✅ |
 
-**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **181 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
-自动化测试：`Ran 181 tests … OK`（见 §4.1 与 §13）。
+**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **185 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
+自动化测试：`Ran 185 tests … OK`（见 §4.1 与 §13）。
 > 注：下表 ST-01~ST-47 中出现的 `fact-0001` / `line-0001` / `cat-0002` 为 **v1（序号方案）历史记录**；C-06 迁移后同一行为以 UUIDv7 + 短前缀复现，见 §9。
 
 ---
@@ -99,9 +99,9 @@
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests -v
-…（181 个用例，全 ok）
+…（185 个用例，全 ok）
 ----------------------------------------------------------------------
-Ran 181 tests in 4.047s
+Ran 185 tests in 4.400s
 
 OK
 ```
@@ -308,7 +308,7 @@ python3 -V                     # 期望 3.9+（实测 3.13.3）
 python3 -c "import sqlite3; print(sqlite3.sqlite_version)"   # 期望 >= 3.38（需 JSON1）
 ```
 
-### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，181 用例）
+### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，185 用例）
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -691,7 +691,9 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 | 30 | `4bfbc58` | QA 修复：页面自动触发（节流）+ 队列证据/冲突标记 + 编辑后通过（AC-16-1/17-1/17-5） |
 | 31 | `14cc921` | SELFTEST 记录 QA 复验修复与实测输出 |
 | 32 | **`d3c7404`** | **真实 LLM 阻断修复**：A 段 prompt 注入启用类别清单 + display_name 容错映射 + 丢弃原因摘要（178→181） |
-| 33 | 本文件 commit | SELFTEST 记录真实联调修复与手工冒烟步骤 |
+| 33 | `dede67f` | SELFTEST 记录真实联调修复与手工冒烟步骤 |
+| 34 | **`f24bbe6`** | **真实 LLM 判定段截断修复**：动态 max_tokens（400+300×消息/候选，封顶 3000/4000）、`finish_reason=length` ⇒ `EXTRACT_LLM_TRUNCATED`、JSON 容错解析（181→185） |
+| 35 | 本文件 commit | SELFTEST 记录真实 API 连续 5 次稳定证据 |
 | 8 | 本文件 commit | README / SELFTEST 同步（§9.9 前端字段契约修复证据；用例 75） |
 
 ### 9.3 自动化测试（76 用例时点记录；C-07 后为 93 用例，见 §10）
@@ -1447,7 +1449,7 @@ README 与 manifest 版本一致: True
 | M6 | `2a79213` | CLI 9 命令、web `/api/extract/*` 9 端点、`web_static/extract.js` 审核 UI + 静态白名单 4 条 |
 | M7 | `fc2b758` | v3→v4 纯加性迁移测试（dry-run/幂等/旧格式拒绝/派生文本 sha256 不变） |
 
-测试 **116 → 181**（新增 65 条；含 QA 展示层修复 5 条 + 真实 LLM prompt/映射修复 3 条）：M1 12 / M2 8 / M3 9 / M4 5 / M5 12 / M6 6 / M7 5。
+测试 **116 → 185**（新增 65 条；含 QA 展示层修复 5 条 + 真实 LLM prompt/映射修复 3 条）：M1 12 / M2 8 / M3 9 / M4 5 / M5 12 / M6 6 / M7 5。
 
 ### 13.2 关键边界实测（mock LLM，无外部调用）
 
@@ -1474,7 +1476,7 @@ README 与 manifest 版本一致: True
 
 ```
 $ python3 -m unittest discover -s tests
-Ran 181 tests in 4.047s
+Ran 185 tests in 4.400s
 OK
 $ python3 run.py --data-dir <tmp> extract status     # 关闭/同意/配置/待审/水位
 $ python3 run.py --data-dir <tmp> extract config --base-url ... --model ...
@@ -1572,7 +1574,46 @@ $ python3 run.py --data-dir /tmp/fasti-realtest extract
 3. `fasti extract queue --json` 目视检查候选内容/类别/决策；`extract runs` 检查无原文/密钥；
 4. **不**在 `~/.fasti` 上执行；真实数据迁移/启用由 Lead/用户操作。
 
-### 13.7 交付声明
+### 13.7 判定段截断阻断修复 + 真实 API 连续 5 次验证（2026-11-15）
+
+**现象**：真实 DeepSeek 判定段 2/3 失败 `EXTRACT_LLM_INVALID_RESPONSE`；原始响应在 rationale 中途
+被截断（`finish_reason=length`），根因 `max_tokens=600` 不足（4 候选 × ≤200 字 rationale 约需
+800–1200 tokens）。
+
+**修复**：
+1. 动态 token：抽取段 `400 + 300×消息数`（封顶 3000）；判定段 `400 + 300×候选数`（封顶 4000），
+   常量集中在 `constants.py`；
+2. 截断可识别：`chat_completion` 读取 `choices[0].finish_reason`，`length` ⇒
+   `EXTRACT_LLM_TRUNCATED`（「响应被截断，请提高 max_tokens 或减少本批规模」；水位不前进），
+   不再伪装成 INVALID_RESPONSE；web 映射 502；
+3. JSON 容错：剥离 ```json 围栏/前后说明文字、提取首个平衡 JSON 对象后再 parse；
+   结构/字段校验严格度不变，失败才 INVALID_RESPONSE；
+4. 测试（181→185）：finish_reason=length ⇒ TRUNCATED、围栏/说明容错、截断 JSON 仍
+   INVALID_RESPONSE、动态 token 公式（3 消息/3 候选 ⇒ 1300）、B 段截断 e2e（run failed、
+   无候选、水位不动）。
+
+**真实 DeepSeek API 连续 5 次（同一临时 store/会话，每次重置该临时目录 state/extract）**：
+| 次数 | 退出码 | 候选数 | category_key | B 段判定 |
+|---|---|---|---|---|
+| 1 | 0 | 3 | tech/basics/tech | 成功（review: auto_write_disabled / relation_unverified） |
+| 2 | 0 | 3 | tech/basics/tech | 成功（同上） |
+| 3 | 0 | 4 | basics/tech×3 | 成功 |
+| 4 | 0 | 4 | basics/tech×3 | 成功 |
+| 5 | 0 | 3 | basics/tech×2 | 成功 |
+
+- **5/5 全部成功产出候选（≥3 条）、B 段判定全部成功**；无 INVALID_RESPONSE / TRUNCATED；
+  每次 run 状态 `ok`；候选均使用真实启用类别 key（basics/tech）；因临时环境 `auto_write=false`
+  全部进审核（`auto_write_disabled` / `relation_unverified`）；**无截断、无重试**。
+
+**手工真实冒烟步骤（固定记录；mock 测试无法覆盖）**：
+1. 临时 store + 伪造 DSH 会话（真实 v4 格式），配置真实 OpenAI 兼容端点（key 只走 stdin/env/0600
+   config，禁止输出/落日志）；
+2. 每次运行前重置该**临时**目录的 `state/extract/`（保留用户 `~/.fasti` 不动）；
+3. `fasti extract` → 断言候选 ≥3 且 category_key ∈ 启用类别、run status ok、无 INVALID/TRUNCATED；
+4. `fasti extract queue --json` 检查候选内容/类别/决策；`fasti extract runs` 检查无原文/密钥；
+5. 观察日志无截断；若出现 TRUNCATED 应提示提高 max_tokens/减少批量（当前公式已按规模自适应）。
+
+### 13.8 交付声明
 
 - 全部实现位于 `workspace/`；`artifacts/`、`briefs/` 未修改；**format 4 / schema 4 / contract 2.0.0**。
 - **未触碰用户 `~/.fasti`**；真实数据迁移（v3→v4）由 Lead/用户执行 `scripts/migrate_v3_to_v4.py`（先备份 + dry-run）。
