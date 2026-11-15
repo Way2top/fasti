@@ -87,8 +87,8 @@
 | ST-48 | AC-13-1~13-5（防呆） | `node --check fasti/adapters/web_static/app.js` + 断言 IIFE 首尾行 | 修复 R-F1 后 **exit 0**（修复前 `SyntaxError: Unexpected token '}'`，exit 1）；断言首行 `(function () {`、次行 `"use strict";`、倒数第二行 `})();` | ✅ |
 | ST-49 | 静态资源完整性（防呆） | 检查 `web_static/` 三文件存在/非空/单末尾 LF、`index.html` 仅同源引用、零外部 URL、与基线内联内容 sha256 一致 | 全部通过；`app.js` 内容 sha256 `0fb916a6…`、`style.css` 内容 sha256 `d6e0c406…` 与 `git show refactor-baseline:…/index.html` 的内联内容**逐字节相同** | ✅ |
 
-**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **194 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
-自动化测试：`Ran 194 tests … OK`（见 §4.1 与 §13）。
+**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **197 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
+自动化测试：`Ran 197 tests … OK`（见 §4.1 与 §13）。
 > 注：下表 ST-01~ST-47 中出现的 `fact-0001` / `line-0001` / `cat-0002` 为 **v1（序号方案）历史记录**；C-06 迁移后同一行为以 UUIDv7 + 短前缀复现，见 §9。
 
 ---
@@ -99,9 +99,9 @@
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests -v
-…（194 个用例，全 ok）
+…（197 个用例，全 ok）
 ----------------------------------------------------------------------
-Ran 194 tests in 3.957s
+Ran 197 tests in 3.998s
 
 OK
 ```
@@ -308,7 +308,7 @@ python3 -V                     # 期望 3.9+（实测 3.13.3）
 python3 -c "import sqlite3; print(sqlite3.sqlite_version)"   # 期望 >= 3.38（需 JSON1）
 ```
 
-### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，194 用例）
+### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，197 用例）
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -694,7 +694,8 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 | 33 | `dede67f` | SELFTEST 记录真实联调修复与手工冒烟步骤 |
 | 34 | **`f24bbe6`** | **真实 LLM 判定段截断修复**：动态 max_tokens（400+300×消息/候选，封顶 3000/4000）、`finish_reason=length` ⇒ `EXTRACT_LLM_TRUNCATED`、JSON 容错解析（181→185） |
 | 35 | `e1ae01e` | SELFTEST 记录真实 API 连续 5 次稳定证据 |
-| 36 | **本 commit（C-10 M1）** | **第 0 层会话分流**：session/title → divert_input（provider 标题优先、首条消息兜底、200/300 截断）、`extract_divert.py`（c10-divert-v1，严格 JSON）、运行接入（skip 推进水位/失败不推进且不中断、逐会话记录）；185→194 |
+| 36 | `976b30d` | C-10 M1 | **第 0 层会话分流**：session/title → divert_input（provider 标题优先、首条消息兜底、200/300 截断）、`extract_divert.py`（c10-divert-v1，严格 JSON）、运行接入（skip 推进水位/失败不推进且不中断、逐会话记录）；185→194 |
+| 37 | **`3befae1`（C-10 M2）** | **抽取 prompt 收紧 c10-extract-v2**：noise 六类/粒度规则/正反例、granularity+subject 校验与丢弃原因、候选 granularity/subject/prompt_version、runs.llm.prompt_version；194→197 |
 | 8 | 本文件 commit | README / SELFTEST 同步（§9.9 前端字段契约修复证据；用例 75） |
 
 ### 9.3 自动化测试（76 用例时点记录；C-07 后为 93 用例，见 §10）
@@ -1477,7 +1478,7 @@ README 与 manifest 版本一致: True
 
 ```
 $ python3 -m unittest discover -s tests
-Ran 194 tests in 3.957s
+Ran 197 tests in 3.998s
 OK
 $ python3 run.py --data-dir <tmp> extract status     # 关闭/同意/配置/待审/水位
 $ python3 run.py --data-dir <tmp> extract config --base-url ... --model ...
@@ -1648,3 +1649,34 @@ $ python3 run.py --data-dir /tmp/fasti-realtest extract
   三 prompt 路由分开断言、skip 推进水位且不产候选、分流失败不推进+其他会话继续+下轮重试。
 - **未做/未覆盖**：真实 LLM 分流（M1 用 mock；真实会话统计留待后续里程碑）、抽取收紧/上限/
   config/state/前端自动触发删除（明确不做）。
+
+### 13.10 C-10 M2：抽取 prompt 收紧（已交付，等待验证）
+
+> 范围仅 M2；会话级 buffer/每会话上限/summary 去重、config v2、state schema2 正式迁移、前端属后续里程碑。
+
+- **prompt `c10-extract-v2`（完整内容见 extract_llm.SYSTEM_EXTRACT）**：
+  - 六类 noise 禁止清单：进度流水 / 子 agent 执行细节 / 工具排障 / 代码架构细节 /
+    对话过程状态 / 临时计划 TODO；
+  - 粒度规则：项目/工作类 ⇒ `granularity="summary"` + `subject` 必填（项目标识，如 fasti），
+    同一项目每会话 1 条 summary（去重留给 M3）；个人信息类 ⇒ `atomic`，subject 可空；
+  - 正例：「在做一个 AI memory 方向的开源项目（Fasti），已完成自动提取，正在验证价值」
+    （summary + subject=fasti）；反例：「架构师交付了 v1.8」「项目采用四角色流程」；
+  - 仍**不含**任何 fact_id/召回/库数据；启用类别清单仅作输出 schema 追加在 system 末尾。
+- **校验/丢弃原因**：`granularity` 枚举 ⇒ `invalid_granularity`；summary.subject 非空 ⇒
+  `missing_subject`；缺 granularity 的旧 mock/旧数据按 atomic 兼容；计数进入
+  `counters.drop_reasons`（CLI `extract`/`runs` 可见）。
+- **可追溯**：候选过程状态新增 `granularity/subject/summary_subject_key/prompt_version`
+  （M2 只加可选字段，不升 state schema；C-09 旧候选读取兼容不报错）；
+  运行记录 `llm.prompt_version="c10-extract-v2"`。
+- **输出示例**（校验通过的两类）：
+  ```json
+  {"granularity":"summary","subject":"fasti",
+   "content":"在做一个 AI memory 方向的开源项目（Fasti），已完成自动提取，正在验证价值"}
+  {"granularity":"atomic","subject":null,"content":"偏好：喜欢猫"}
+  ```
+- **测试（194→197）**：prompt 含六类 noise/粒度规则/正反例且无 fact_id/召回/库数据；
+  summary 缺 subject ⇒ missing_subject；非法 granularity ⇒ invalid_granularity；atomic 保留
+  且候选/runs 带 prompt_version；旧候选（无新字段）可读。`test_extract_run.py` 拆分出
+  `test_extract_granularity.py` 以保持 ≤500 行。
+- **未做**：会话级 buffer/去重/5 条上限（M3）、config schema2（M4）、state schema2 迁移（M4）、
+  前端去自动触发（M5）；真实 LLM prompt 冒烟未在本里程碑执行（M2 用 mock；真实回归在后续）。
