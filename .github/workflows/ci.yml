@@ -1,0 +1,150 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install zstd (会话解压依赖)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq zstd
+
+      - name: 单元测试（全量）
+        working-directory: workspace
+        run: python3 -m unittest discover -s tests -v
+
+      - name: 版本一致性（constants 与包内 schema）
+        working-directory: workspace
+        run: |
+          python3 - <<'PY'
+          import pathlib, re, sys
+          const = pathlib.Path("fasti/core/constants.py").read_text(encoding="utf-8")
+          ddl = pathlib.Path("fasti/core/schema/database-schema.sql").read_text(encoding="utf-8")
+          fv = re.search(r'FORMAT_VERSION\s*=\s*(\d+)', const).group(1)
+          sv = re.search(r'SCHEMA_VERSION\s*=\s*(\d+)', const).group(1)
+          uv = re.search(r'PRAGMA user_version\s*=\s*(\d+)', ddl).group(1)
+          print(f"format={fv} schema={sv} ddl_user_version={uv}")
+          assert sv == uv, f"schema_version({sv}) 与 DDL user_version({uv}) 不一致"
+          print("OK")
+          PY
+
+  static:
+    name: 静态检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: JS 语法
+        run: |
+          for f in workspace/fasti/adapters/web_static/*.js; do
+            echo "check $f"
+            node --check "$f"
+          done
+
+      - name: 文件行数上限（500）
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            n=$(wc -l < "$f")
+            if [ "$n" -gt 500 ]; then
+              echo "❌ $f 有 $n 行（上限 500）"
+              fail=1
+            fi
+          done < <(git ls-files 'workspace/*.py' 'workspace/*.js' 'workspace/*.css' 'workspace/*.html')
+          [ "$fail" -eq 0 ] && echo "✅ 无文件超过 500 行"
+
+      - name: 零第三方依赖
+        run: |
+          python3 - <<'PY'
+          import ast, pathlib, sys
+          stdlib = set(sys.stdlib_module_names)
+          # compression.zstd 是 Python 3.14+ 的 stdlib；低版本模块表里没有，但在 3.14 是标准库
+          stdlib.add("compression")
+          project = {"fasti"}
+          bad = []
+          for p in pathlib.Path("workspace/fasti").rglob("*.py"):
+              tree = ast.parse(p.read_text(encoding="utf-8"))
+              for node in ast.walk(tree):
+                  names = []
+                  if isinstance(node, ast.Import):
+                      names = [a.name.split(".")[0] for a in node.names]
+                  elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                      names = [node.module.split(".")[0]]
+                  for n in names:
+                      if n not in stdlib and n not in project:
+                          bad.append(f"{p}: {n}")
+          if bad:
+              print("❌ 发现第三方依赖：")
+              print("\n".join(bad))
+              sys.exit(1)
+          print(f"✅ 全部为标准库（{len(stdlib)} 个可用模块）")
+          PY
+
+      - name: 无本机绝对路径泄漏
+        run: |
+          if git grep -nE "/Users/[a-zA-Z0-9_]+|/home/[a-zA-Z0-9_]+" -- ':!*.md' ':!workspace/SELFTEST.md' ':!workspace/tests/fixtures/*' ; then
+            echo "❌ 发现本机绝对路径"
+            exit 1
+          fi
+          echo "✅ 无本机路径"
+
+  smoke:
+    name: 端到端冒烟
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: init → 录入 → 演进 → render → verify
+        working-directory: workspace
+        run: |
+          set -eux
+          D="$RUNNER_TEMP/store"
+          python3 run.py --data-dir "$D" init
+          python3 run.py --data-dir "$D" fact add --category tech --content "主力语言：Python" --valid-from 2025-01
+          FID=$(python3 run.py --data-dir "$D" --json fact list | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["items"][0]["fact_id"])')
+          python3 run.py --data-dir "$D" fact evolve "$FID" --content "主力语言：C++" --valid-from 2026-11
+          python3 run.py --data-dir "$D" recompute
+          python3 run.py --data-dir "$D" render
+          python3 run.py --data-dir "$D" profile show
+          python3 run.py --data-dir "$D" verify --deep
+          python3 run.py --data-dir "$D" export --out "$RUNNER_TEMP/export"
+          python3 run.py --data-dir "$RUNNER_TEMP/imported" import "$RUNNER_TEMP/export"
+
+      - name: 确定性（同事件流 → 同产物）
+        working-directory: workspace
+        run: |
+          set -eux
+          D="$RUNNER_TEMP/determinism"
+          python3 run.py --data-dir "$D" init
+          python3 run.py --data-dir "$D" fact add --category tech --content "x" --valid-from 2025-01
+          A=$(sha256sum "$D/profile/current.md" | cut -d' ' -f1)
+          python3 run.py --data-dir "$D" recompute
+          B=$(sha256sum "$D/profile/current.md" | cut -d' ' -f1)
+          test "$A" = "$B" && echo "✅ 确定性一致"
