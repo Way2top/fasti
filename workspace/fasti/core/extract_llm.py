@@ -153,13 +153,58 @@ def _retry_after(raw):
 def _extract_content(raw):
     try:
         envelope = json.loads((raw or b"").decode("utf-8"))
-        content = envelope["choices"][0]["message"]["content"]
+        choice = envelope["choices"][0]
+        content = choice["message"]["content"]
         if not isinstance(content, str):
             raise ValueError("content 不是字符串")
     except (ValueError, KeyError, IndexError, TypeError, UnicodeDecodeError) as exc:
         raise errors.make("EXTRACT_LLM_INVALID_RESPONSE",
                           "LLM 响应无法解析：%s" % exc.__class__.__name__)
+    if choice.get("finish_reason") == "length":
+        raise errors.make(
+            "EXTRACT_LLM_TRUNCATED",
+            "LLM 响应被截断（finish_reason=length）：请提高 max_tokens 或减少本批规模"
+            "后重试；水位不前进")
     return content
+
+
+def parse_json_object(text):
+    """容错解析：剥离 ```json 围栏 / 前后解释文字 → 提取首个平衡 JSON 对象 → parse。"""
+    if not isinstance(text, str):
+        raise ValueError("content 不是字符串")
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        lines = stripped.split("\n")
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        stripped = "\n".join(lines).strip()
+    start = stripped.find("{")
+    if start < 0:
+        raise ValueError("未找到 JSON 对象")
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(stripped)):
+        char = stripped[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == "\"":
+                in_string = False
+            continue
+        if char == "\"":
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return json.loads(stripped[start:index + 1])
+    raise ValueError("JSON 对象不完整（可能被截断）")
 
 
 # ---------------------------------------------------------------- 两段 prompt
@@ -242,7 +287,7 @@ def validate_extraction_result(raw):
     单条候选结构/枚举/范围非法 ⇒ 丢弃该条（计数），不影响整批。
     """
     try:
-        data = json.loads(raw)
+        data = parse_json_object(raw)
     except ValueError:
         raise errors.make("EXTRACT_LLM_INVALID_RESPONSE",
                           "抽取结果不是合法 JSON，整批拒绝、水位不前进")
@@ -298,7 +343,7 @@ def _valid_candidate(item):
 def validate_judgment_result(raw, candidate_ids, recall_ids_by_candidate):
     """→ {candidate_id: judgment}；结构非法整批失败；target 不在召回 ⇒ unverified。"""
     try:
-        data = json.loads(raw)
+        data = parse_json_object(raw)
     except ValueError:
         raise errors.make("EXTRACT_LLM_INVALID_RESPONSE",
                           "判定结果不是合法 JSON，整批拒绝、水位不前进")

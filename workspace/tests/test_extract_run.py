@@ -246,6 +246,54 @@ class TestExtractRuntime(ExtractRuntimeBase):
         self.assertNotIn("fact_id", sent)
         self.assertNotIn("召回", sent)
 
+    def test_dynamic_max_tokens(self):
+        _write_session(self.dsh_home, ["消息一", "消息二", "消息三"])
+        self._enable(auto_write=False)
+        extraction = {"candidates": [
+            self._candidate_payload("候选 A", message_id="m1", category="tech"),
+            self._candidate_payload("候选 B", message_id="m2", category="tech"),
+            self._candidate_payload("候选 C", message_id="m3", category="tech"),
+        ], "notes": ""}
+        cids = [extract_state.candidate_id_for(SESSION_ID, ["m%d" % i], content,
+                                               "tech", "new")
+                for i, content in ((1, "候选 A"), (2, "候选 B"), (3, "候选 C"))]
+        judgments = {"judgments": [self._judgment(cid, "new", 0.9) for cid in cids],
+                     "notes": ""}
+        run, mock = self._run(extraction, judgments)
+        extract_call = [item for item in mock.requests
+                        if "抽取" in item["messages"][0]["content"]][0]
+        judge_call = [item for item in mock.requests
+                      if "判定" in item["messages"][0]["content"]][0]
+        self.assertEqual(extract_call["max_tokens"], 400 + 300 * 3)
+        self.assertEqual(judge_call["max_tokens"], 400 + 300 * 3)
+        self.assertEqual(run["counters"]["candidates_created"], 3)
+
+    def test_judge_truncation_fails_with_dedicated_code(self):
+        _write_session(self.dsh_home, ["我会用 Rust 写服务"])
+        self._enable(auto_write=False)
+
+        class TruncatingTransport(object):
+            def __call__(self, url, headers, body, timeout):
+                payload = json.loads(body.decode("utf-8"))
+                system = payload["messages"][0]["content"]
+                if "抽取" in system:
+                    return 200, _envelope(json.dumps({"candidates": [
+                        {"content": "我会用 Rust 写服务", "category_key": "tech",
+                         "time_hint": None, "extraction_confidence": 0.9,
+                         "evidence": {"message_ids": ["m1"]}, "reason": "x"}]},
+                        ensure_ascii=False))
+                truncated = json.dumps({"choices": [{
+                    "finish_reason": "length",
+                    "message": {"content": '{"judgments":[{"candidate_id":"cand-'}}]})
+                return 200, truncated.encode("utf-8")
+        extract_llm.set_transport(TruncatingTransport())
+        with self.assertRaises(errors.CoreError) as ctx:
+            api.extract_run(self.data_dir, trigger="manual")
+        self.assertEqual(ctx.exception.code, "EXTRACT_LLM_TRUNCATED")
+        marks, _rebuilt = extract_state.load_watermarks(self.data_dir)
+        self.assertEqual(marks["sessions"], {})
+        self.assertEqual(api.list_extract_candidates(self.data_dir, "all")["items"], [])
+
     def test_system_similar_blocks_llm_new(self):
         api.add_fact(self.data_dir, "basics", "老家湖北黄冈", "2025-01")
         _write_session(self.dsh_home, ["我出生在湖北黄冈"])

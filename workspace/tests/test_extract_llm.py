@@ -93,6 +93,25 @@ class TestLlmClient(unittest.TestCase):
             extract_llm.chat_completion(CFG, [{"role": "user", "content": "hi"}])
         self.assertEqual(ctx.exception.code, "EXTRACT_LLM_TIMEOUT")
 
+    def test_truncation_is_dedicated_error(self):
+        envelope = json.dumps({"choices": [{"finish_reason": "length", "message": {
+            "content": '{"judgments":[{"candidate_id":"cand-'}}]}).encode()
+        transport = MockTransport([(200, envelope)])
+        extract_llm.set_transport(transport)
+        with self.assertRaises(errors.CoreError) as ctx:
+            extract_llm.chat_completion(CFG, [{"role": "user", "content": "hi"}])
+        self.assertEqual(ctx.exception.code, "EXTRACT_LLM_TRUNCATED")
+        self.assertIn("截断", ctx.exception.message)
+        self.assertIn("max_tokens", ctx.exception.message)
+
+    def test_tolerant_json_parsing(self):
+        fenced = "```json\n{\"candidates\": []}\n```"
+        self.assertEqual(extract_llm.parse_json_object(fenced), {"candidates": []})
+        prose = "这是结果：\n```json\n{\"a\": {\"b\": 1}}\n```\n以上。"
+        self.assertEqual(extract_llm.parse_json_object(prose), {"a": {"b": 1}})
+        with self.assertRaises(ValueError):
+            extract_llm.parse_json_object('{"a": 1')
+
     def test_response_limits_and_invalid_envelope(self):
         extract_llm.set_transport(MockTransport([
             (200, b"x" * (2097153))]))

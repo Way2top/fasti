@@ -50,7 +50,8 @@ def http_status_for(code):
     if code == "EXTRACT_LLM_TIMEOUT":
         return 504
     if code in ("EXTRACT_LLM_UNREACHABLE", "EXTRACT_LLM_HTTP_ERROR",
-                "EXTRACT_LLM_INVALID_RESPONSE", "EXTRACT_ZSTD_UNAVAILABLE"):
+                "EXTRACT_LLM_INVALID_RESPONSE", "EXTRACT_LLM_TRUNCATED",
+                "EXTRACT_ZSTD_UNAVAILABLE"):
         return 502
     if code.startswith("CONFLICT_") or code == "STORE_NOT_INITIALIZED":
         return 409

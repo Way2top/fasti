@@ -338,7 +338,11 @@ def _process_chunk(data_dir, model, cfg, chunk, run_id, dry_run, dedupe,
                   for category in model.enabled_categories()]
     messages = extract_llm.build_extraction_messages(
         chunk, sensitive_filter=sensitive, categories=categories)
-    content = extract_llm.chat_completion(cfg, messages, max_tokens=800)
+    extract_tokens = min(
+        constants.EXTRACT_EXTRACT_TOKENS_CAP,
+        constants.EXTRACT_EXTRACT_TOKENS_BASE
+        + constants.EXTRACT_EXTRACT_TOKENS_PER_MESSAGE * len(chunk["messages"]))
+    content = extract_llm.chat_completion(cfg, messages, max_tokens=extract_tokens)
     valid, dropped = extract_llm.validate_extraction_result(content)
     counters["dropped_invalid"] = counters.get("dropped_invalid", 0) + dropped
     counters["drop_reasons"]["invalid_candidate_structure"] += dropped
@@ -399,7 +403,12 @@ def _process_chunk(data_dir, model, cfg, chunk, run_id, dry_run, dedupe,
                     for candidate_id, result in per_candidate.items()}
     judge_payload = extract_llm.build_judgment_messages(prepared, recall_lines,
                                                         sensitive_filter=sensitive)
-    judgments_content = extract_llm.chat_completion(cfg, judge_payload, max_tokens=600)
+    judge_tokens = min(
+        constants.EXTRACT_JUDGE_TOKENS_CAP,
+        constants.EXTRACT_JUDGE_TOKENS_BASE
+        + constants.EXTRACT_JUDGE_TOKENS_PER_CANDIDATE * len(prepared))
+    judgments_content = extract_llm.chat_completion(cfg, judge_payload,
+                                                    max_tokens=judge_tokens)
     judgments = extract_llm.validate_judgment_result(
         judgments_content, {item["candidate_id"] for item in prepared},
         {item["candidate_id"]: per_candidate[item["candidate_id"]]["recalled_fact_ids"]
