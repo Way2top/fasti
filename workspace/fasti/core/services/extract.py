@@ -341,17 +341,7 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
     recall_summary = {"mode": recall_mode or "full", "corpus_bytes": corpus_bytes,
                       "candidates": counters["candidates_created"],
                       "recalled": recalled_total, "truncated": any_truncated}
-    failed_statuses = {"failed", "divert_failed", "unreadable"}
-    has_failure = any((session.get("status") in failed_statuses)
-                      for session in sessions_summary)
-    has_success = any(session.get("status") in ("processed", "diversion_skip")
-                      for session in sessions_summary)
-    if fatal_error is not None:
-        status = "failed"          # ADR-038：全局 fatal 一律 failed（成功结果保留）
-    elif has_failure:
-        status = "partial" if (has_success or counters["candidates_created"]) else "failed"
-    else:
-        status = "ok"
+    status = ops.compute_run_status(sessions_summary, fatal_error, counters)
     finished_at = clock.now_recorded_at()
     retry_stats = extract_llm.retry_stats()
     counters["retry_calls"] = retry_stats["total"]

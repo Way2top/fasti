@@ -94,20 +94,16 @@ def _base_url(cfg):
     return (cfg.get("llm", {}).get("base_url") or "").rstrip("/")
 
 
-_USAGE_TOTALS = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0,
-                 "reasoning_tokens": 0}
+_USAGE_TOTALS = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "reasoning_tokens": 0}
 _RETRY_STATS = {"total": 0, "reasons": {}}
 _LAST_USAGE = {}
-
 
 def reset_usage_totals():
     for key in _USAGE_TOTALS:
         _USAGE_TOTALS[key] = 0
 
-
 def usage_totals():
     return dict(_USAGE_TOTALS)
-
 
 def reset_retry_stats():
     _RETRY_STATS["total"] = 0
@@ -118,10 +114,8 @@ def retry_stats():
     return {"total": _RETRY_STATS["total"],
             "reasons": dict(_RETRY_STATS["reasons"])}
 
-
 def last_usage():
     return dict(_LAST_USAGE)
-
 
 def _record_usage(envelope):
     usage = envelope.get("usage") if isinstance(envelope, dict) else None
@@ -203,20 +197,15 @@ def chat_completion(cfg, messages, max_tokens=800, disable_thinking=False):
 
 JSON_RETRY_LIMIT = 2
 TRUNCATED_RETRY_LIMIT = 1
-JSON_CORRECTION = ("上次输出不是合法 JSON 或不符合约定结构。请只输出一个合法的 JSON 对象，"
-                   "不要包含解释文字或 Markdown 围栏。")
+JSON_CORRECTION = ("上次输出不是合法 JSON。请只输出一个合法 JSON 对象，"
+                   "不要解释或 Markdown 围栏。")
 
 
 def complete_json(cfg, messages, validator, max_tokens=800,
                   disable_thinking=False):
-    """调用 LLM 并用 validator 解析；INVALID_RESPONSE 最多重试 2 次、TRUNCATED 1 次。
-
-    重试时在 user 消息后追加纠正提示（更可能让模型回到 JSON 输出）；仍失败则抛原错误。
-    网络/HTTP 错误的重试仍由 chat_completion 内部处理，不在此重复。
-    """
+    """INVALID_RESPONSE 重试 2 次、TRUNCATED 1 次；追加纠正提示；仍失败抛原错误。"""
     extra = []
-    invalid_attempts = 0
-    truncated_attempts = 0
+    invalid_attempts = truncated_attempts = 0
     while True:
         try:
             content = chat_completion(

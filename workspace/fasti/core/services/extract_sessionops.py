@@ -268,3 +268,16 @@ def prepare_kept(kept, session_id, candidates_before, dedupe, counters):
         prepared.append({**item, "candidate_id": candidate_id,
                          "evidence_key": evidence_key, "session_id": session_id})
     return prepared
+
+
+def compute_run_status(sessions, fatal_error, counters):
+    """ADR-038：全局 fatal ⇒ failed；仅隔离失败 ⇒ partial；否则 ok。"""
+    failures = {"failed", "divert_failed", "unreadable"}
+    has_failure = any(session.get("status") in failures for session in sessions)
+    has_success = any(session.get("status") in ("processed", "diversion_skip")
+                      for session in sessions)
+    if fatal_error is not None:
+        return "failed"
+    if has_failure:
+        return "partial" if (has_success or counters["candidates_created"]) else "failed"
+    return "ok"
