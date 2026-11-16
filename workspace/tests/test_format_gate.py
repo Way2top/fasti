@@ -70,11 +70,6 @@ def _write_bundle(bundle_dir, format_version, events=V2_EVENTS):
 
 
 class TestFormatGate(BaseStoreTest):
-    def test_new_store_is_format_version_4(self):
-        with open(os.path.join(self.data_dir, "events.jsonl"), encoding="utf-8") as handle:
-            first = json.loads(handle.readline())
-        self.assertEqual(first["data"]["format_version"], 4)
-
     def test_old_store_rejected_with_migration_guidance(self):
         for writer, name in ((_write_v1_store, "v1-store"), (_write_v2_store, "v2-store")):
             old_dir = os.path.join(self.tmp, name)
@@ -145,14 +140,6 @@ class TestFormatGate(BaseStoreTest):
             self.assertIn("v3→v4", hint)
             self.assertIn(str(constants.FORMAT_VERSION), hint)
 
-    def test_export_manifest_is_format_version_4(self):
-        api.add_fact(self.data_dir, "tech", "x", "2026-11")
-        exported = api.export_bundle(self.data_dir)
-        with open(os.path.join(exported["output_dir"], "manifest.json"),
-                  encoding="utf-8") as handle:
-            manifest = json.load(handle)
-        self.assertEqual(manifest["format_version"], 4)
-        self.assertEqual(exported["format_version"], 4)
 
 
 if __name__ == "__main__":

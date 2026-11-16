@@ -166,17 +166,12 @@ class TestGlobalFatal(ExtractRuntimeBase):
         marks, _ = extract_state.load_watermarks(self.data_dir)
         self.assertEqual(marks["sessions"], {})
 
-    def test_unreachable_is_global_fatal(self):
-        self._two_sessions()
-        self._run_fatal("unreachable")
-
-    def test_timeout_is_global_fatal(self):
-        self._two_sessions()
-        self._run_fatal("timeout")
-
-    def test_http_error_is_global_fatal(self):
-        self._two_sessions()
-        self._run_fatal("http")
+    def test_transport_errors_are_global_fatal(self):
+        # 网络/超时/HTTP 三类同走 global-fatal 分支，合并为一个用例
+        for kind in ("unreachable", "timeout", "http"):
+            with self.subTest(kind=kind):
+                self._two_sessions()
+                self._run_fatal(kind)
 
     def test_fatal_after_success_is_failed_and_keeps_success(self):
         self._two_sessions()
