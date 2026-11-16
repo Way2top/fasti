@@ -187,6 +187,14 @@
       });
   }
 
+  function summaryMergeLine(run) {
+    var merge = run && run.summary_merge;
+    if (!merge) { return null; }                    // 旧 run：不显示，避免 null → null
+    return "summary 合并：" + merge.before + " → " + merge.after +
+      "（自动合并 " + merge.auto_merged + "，提示 " +
+      ((merge.suggestion_groups || []).length) + " 组）";
+  }
+
   function loadRuns() {
     call("/api/extract/runs?limit=10").then(function (data) {
       var box = document.getElementById("extract-runs");
@@ -220,6 +228,8 @@
                 lines.push("未扫描会话：" + coverage.unscanned_sessions +
                            "；预计还需 " + coverage.estimated_runs_remaining + " 次");
               }
+              var mergeLine = summaryMergeLine(item);
+              if (mergeLine) { lines.push(mergeLine); }
               var skipped = 0;
               (item.sessions || []).forEach(function (session) {
                 if (session.status === "no-new-messages") { skipped++; return; }

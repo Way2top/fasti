@@ -271,6 +271,41 @@ class TestRunReport(BaseStoreTest):
         self.assertEqual(second["coverage"]["estimated_runs_remaining"], 0)
         extract_llm.reset_transport()
 
+    def test_web_summary_merge_rendering_logic(self):
+        import re, subprocess, sys
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "fasti", "adapters", "web_static",
+                               "extract.js"), encoding="utf-8") as handle:
+            script = handle.read()
+        match = re.search(r"  function summaryMergeLine\(run\) \{.*?\n  \}",
+                          script, re.S)
+        self.assertIsNotNone(match)
+        code = (match.group(0) +
+                "\nconsole.log(JSON.stringify([summaryMergeLine("
+                '{"summary_merge":{"before":5,"after":3,"auto_merged":2,'
+                '"suggestion_groups":[{"x":1}]}}), summaryMergeLine('
+                '{"summary_merge":null}), summaryMergeLine({}), '
+                'summaryMergeLine({"summary_merge":{"before":0,"after":0,'
+                '"auto_merged":0,"suggestion_groups":[]}})]));')
+        output = subprocess.run(["node", "-e", code], capture_output=True,
+                                text=True, check=True).stdout
+        values = json.loads(output)
+        self.assertEqual(values[0], "summary 合并：5 → 3（自动合并 2，提示 1 组）")
+        self.assertIsNone(values[1])                    # 旧 run 不显示
+        self.assertIsNone(values[2])
+        self.assertEqual(values[3], "summary 合并：0 → 0（自动合并 0，提示 0 组）")
+
+    def test_run_detail_api_exposes_summary_merge(self):
+        run_id, _cid = self._seed()
+        run = api.get_extract_run(self.data_dir, run_id)["run"]
+        self.assertEqual(run["summary_merge"]["before"], 2)
+        extract_state.append_run(self.data_dir, {
+            "run_id": "018bcfe5-a000-7a5a-9a5a-5a5a5a5a5a5a", "status": "ok",
+            "schema_version": 2, "sessions": []})
+        old = api.get_extract_run(
+            self.data_dir, "018bcfe5-a000-7a5a-9a5a-5a5a5a5a5a5a")["run"]
+        self.assertIsNone(old.get("summary_merge"))
+
     def test_legacy_run(self):
         extract_state.append_run(self.data_dir, {
             "run_id": "018bcfe5-7000-7a5a-9a5a-5a5a5a5a5a5a", "status": "ok"})
