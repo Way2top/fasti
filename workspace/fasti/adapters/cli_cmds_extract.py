@@ -237,15 +237,17 @@ def _cmd_extract_runs(args, data_dir):
     if reference:
         return _cmd_extract_run_detail(data_dir, reference)
     result = api.list_extract_runs(data_dir, getattr(args, "limit", 20))
-    lines = ["run_id | 开始 | 状态 | 会话/消息 | 候选/自动写/待审 | 未扫描/预计剩余 | 失败"]
+    lines = ["run_id | 开始 | 状态 | 会话/消息 | 进入抽取 | 候选/自动写/待审 | "
+             "未扫描/预计剩余 | 失败"]
     for run in result["items"]:
         counters = run.get("counters") or {}
         recall = run.get("recall") or {}
         coverage = run.get("coverage") or {}
-        lines.append("%s | %s | %s%s | %s/%s | %s/%s/%s | %s/%s | %s" % (
+        lines.append("%s | %s | %s%s | %s/%s | %s | %s/%s/%s | %s/%s | %s" % (
             run.get("run_id"), run.get("started_at"), run.get("status"),
             "（旧记录信息不完整）" if run.get("legacy") else "",
             counters.get("sessions_processed"), counters.get("messages_processed"),
+            counters.get("sessions_entered_extraction", "-"),
             counters.get("candidates_created"), counters.get("auto_written"),
             counters.get("queued"), coverage.get("unscanned_sessions", "-"),
             coverage.get("estimated_runs_remaining", "-"), counters.get("errors")))
@@ -270,9 +272,13 @@ def _cmd_extract_run_detail(data_dir, reference):
                             "（旧记录信息不完整）" if run.get("legacy") else "")]
     coverage = run.get("coverage") or {}
     if coverage:
-        lines.append("覆盖：候选会话 %s，已扫描/本次 %s/%s，未扫描 %s，预计还需 %s 次"
-                     % (coverage.get("total_candidate_sessions"),
-                        coverage.get("sessions_scanned_this_run"),
+        cumulative = coverage.get("sessions_scanned_cumulative")
+        if cumulative is None:
+            cumulative = ((coverage.get("total_candidate_sessions") or 0)
+                          - (coverage.get("unscanned_sessions") or 0))
+        lines.append("覆盖：候选会话 %s，累计已扫描 %s/%s，本次 %s，未扫描 %s，预计还需 %s 次"
+                     % (coverage.get("total_candidate_sessions"), cumulative,
+                        coverage.get("total_candidate_sessions"),
                         coverage.get("sessions_scanned_this_run"),
                         coverage.get("unscanned_sessions"),
                         coverage.get("estimated_runs_remaining")))

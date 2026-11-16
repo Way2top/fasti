@@ -163,8 +163,8 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
     started_at = clock.now_recorded_at()
     extract_llm.reset_usage_totals()
     counters = _empty_counters()
-    counters.update({"sessions_entered_extraction": 0, "divert_extract": 0,
-                     "divert_skip": 0, "divert_failed": 0})
+    counters.update({"sessions_entered_extraction": 0, "sessions_attempted": 0,
+                     "divert_extract": 0, "divert_skip": 0, "divert_failed": 0})
     run_errors = []
     fatal_error = None
     sessions_summary = []
@@ -194,8 +194,6 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
     paths = session_source.discover_sessions(dsh_home, allow_plain=allow_plain)
     with extract_state.run_lock(data_dir):
         for path in paths:
-            if counters["sessions_seen"] >= limit_sessions:
-                break
             counters["sessions_seen"] += 1
             try:
                 session = session_source.load_session(path, allow_plain=allow_plain)
@@ -224,6 +222,9 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
                 sessions_summary.append({"session_id": session["session_id"],
                                          "status": "no-new-messages"})
                 continue
+            if counters.get("sessions_attempted", 0) >= limit_sessions:
+                break  # 限额只计「候选 root + 有新消息」的真正待处理会话
+            counters["sessions_attempted"] = counters.get("sessions_attempted", 0) + 1
             divert_input = session.get("divert_input") or {}
             try:
                 diversion = extract_divert.divert_session(cfg, divert_input, sensitive)
@@ -359,9 +360,11 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
         sources.get("dsh_home") or "~/.dsh",
         bool(sources.get("allow_plain")), watermarks,
         int(extract_cfg.get("max_sessions_per_run") or 10), session_cwd)
-    coverage["sessions_attempted"] = counters.get("divert_total", 0)
+    coverage["sessions_attempted"] = counters.get("sessions_attempted", 0)
     coverage["sessions_scanned_this_run"] = (
         counters.get("sessions_processed", 0) + counters.get("divert_skip", 0))
+    coverage["sessions_scanned_cumulative"] = (
+        coverage["total_candidate_sessions"] - coverage["unscanned_sessions"])
     run["coverage"] = coverage
     if not dry_run:
         extract_state.append_run(data_dir, run)

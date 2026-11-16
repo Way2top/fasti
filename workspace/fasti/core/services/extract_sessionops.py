@@ -143,6 +143,8 @@ def diversion_record(session, divert_input, status, decision=None, reason=None,
         "status": status,
         "decision": decision,
         "reason": reason,
+        "user_message_count": (divert_input or {}).get("user_message_count"),
+        "messages": (divert_input or {}).get("user_message_count"),
         "diversion": {
             "title_source": divert_input.get("title_source"),
             "title_kinds_seen": divert_input.get("title_kinds_seen"),

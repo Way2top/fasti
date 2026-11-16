@@ -161,6 +161,12 @@ class TestRunReport(BaseStoreTest):
             "sessions": [
                 {"session_id": "skip1", "status": "no-new-messages"},
                 {"session_id": "skip2", "status": "no-new-messages"},
+                {"session_id": "skip3", "status": "diversion_skip",
+                 "title": {"text": "排障会话", "source": "provider",
+                           "truncated": False},
+                 "decision": "skip", "reason": "纯技术排障",
+                 "user_message_count": 3, "messages": 3,
+                 "candidates": {"extracted": 0, "kept": 0, "created": 0}},
                 {"session_id": "work", "status": "processed",
                  "title": {"text": "真实标题", "source": "provider",
                            "truncated": False},
@@ -189,6 +195,81 @@ class TestRunReport(BaseStoreTest):
         self.assertIn("抽取 2 → 保留 1", out)
         self.assertIn("上限丢弃 1", out)
         self.assertIn("重复 1", out)
+        self.assertIn("排障会话", out)
+        self.assertIn("消息 3", out)
+
+    def test_list_includes_entered_extraction(self):
+        extract_state.append_run(self.data_dir, {
+            "run_id": "018bcfe5-9000-7a5a-9a5a-5a5a5a5a5a5a",
+            "schema_version": 3, "status": "ok", "started_at": "2026-11-16T10:00:00+08:00",
+            "counters": {"sessions_processed": 3, "sessions_entered_extraction": 2,
+                         "messages_processed": 5, "candidates_created": 1,
+                         "auto_written": 0, "queued": 1, "errors": 0},
+            "coverage": {"unscanned_sessions": 18, "estimated_runs_remaining": 2},
+            "sessions": [], "summary_merge": {}, "legacy": False})
+        from fasti.adapters import cli_cmds_extract
+        from unittest import mock
+        import contextlib, io
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            cli_cmds_extract._cmd_extract_runs(mock.Mock(run_id=None, limit=20),
+                                              self.data_dir)
+        out = buffer.getvalue()
+        self.assertIn("进入抽取", out)
+        self.assertIn("| 2 |", out)
+
+    def test_limit_counts_only_candidate_sessions_and_reaches_zero(self):
+        import json as _json
+        dsh = os.path.join(self.tmp, "dsh")
+        def write(session_id, messages, depth=0):
+            path = os.path.join(dsh, "sessions", "ws", session_id,
+                                "session.v4.jsonl")
+            os.makedirs(os.path.dirname(path))
+            events = [{"type": "session", "data": {"version": 4,
+                                                   "delegationDepth": depth,
+                                                   "isSeeded": False,
+                                                   "session_id": session_id}}]
+            for index, text in enumerate(messages, start=1):
+                events.append({"seq": index, "type": "user/message",
+                               "data": {"id": "m%d" % index, "role": "user",
+                                        "source": {"kind": "user"},
+                                        "content": [{"type": "text", "text": text}]}})
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("".join(_json.dumps(event) + "\n" for event in events))
+        for index in range(20):
+            write("s%02d" % index, ["消息 %d" % index])
+        for index in range(15):
+            write("sub%02d" % index, ["子 agent"], depth=1)
+        for index in range(3):
+            write("empty%02d" % index, [])
+        from fasti.core import extract_config, extract_llm, constants
+        cfg = extract_config.load_config(self.data_dir)
+        cfg["llm"].update({"base_url": "http://mock.local/v1", "model": "mock",
+                           "api_key": "sk-mock"})
+        cfg["extract"].update({"enabled": True, "auto_write": False,
+                               "max_sessions_per_run": 10,
+                               "sources": {"dsh_home": dsh, "allow_plain": True}})
+        extract_config.save_config(self.data_dir, cfg)
+        extract_config.set_consent(self.data_dir, True)
+        state = {"n": 0}
+        def transport(url, headers, body, timeout):
+            state["n"] += 1
+            payload = json.loads(body.decode("utf-8"))
+            system = payload["messages"][0]["content"]
+            if "分流" in system:
+                return 200, json.dumps({"choices": [{"message": {"content":
+                    json.dumps({"decision": "skip", "reason": "测试跳过"})}}]}).encode()
+            raise AssertionError("limit 测试不应进入抽取")
+        extract_llm.set_transport(transport)
+        first = api.extract_run(self.data_dir, trigger="manual")
+        self.assertEqual(first["counters"]["sessions_attempted"], 10)
+        self.assertEqual(first["coverage"]["unscanned_sessions"], 10)
+        self.assertEqual(first["coverage"]["estimated_runs_remaining"], 1)
+        second = api.extract_run(self.data_dir, trigger="manual")
+        self.assertEqual(second["counters"]["sessions_attempted"], 10)
+        self.assertEqual(second["coverage"]["unscanned_sessions"], 0)
+        self.assertEqual(second["coverage"]["estimated_runs_remaining"], 0)
+        extract_llm.reset_transport()
 
     def test_legacy_run(self):
         extract_state.append_run(self.data_dir, {

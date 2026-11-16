@@ -199,8 +199,14 @@
         var row = document.createElement("div");
         var head = document.createElement("button");
         head.type = "button"; head.className = "secondary";
+        var coverage = run.coverage || {};
         head.textContent = (run.started_at || "-") + " · " + run.status +
-          (run.legacy ? " · 旧记录信息不完整" : "");
+          (run.legacy ? " · 旧记录信息不完整" : "") +
+          " · 会话 " + ((run.counters || {}).sessions_processed || 0) +
+          " / 进入抽取 " + ((run.counters || {}).sessions_entered_extraction || 0) +
+          " / 候选 " + ((run.counters || {}).candidates_created || 0) +
+          " / 未扫描 " + (coverage.unscanned_sessions !== undefined ?
+                          coverage.unscanned_sessions : "-");
         head.addEventListener("click", function () {
           call("/api/extract/runs/" + encodeURIComponent(run.run_id))
             .then(function (detail) {
@@ -230,7 +236,10 @@
                 if (counts.duplicates) { detail += "；重复 " + counts.duplicates; }
                 lines.push((title.text || "不可用") + "（" +
                            (title.source || "unavailable") + "）| " +
-                           (session.decision || "-") + " | " + detail);
+                           (session.decision || "-") + " | " +
+                           (session.reason || "-") + " | 消息 " +
+                           (session.user_message_count !== undefined ?
+                            session.user_message_count : "-") + " | " + detail);
               });
               if (!(item.sessions || []).length) {
                 lines.push("本次运行没有处理任何会话");
