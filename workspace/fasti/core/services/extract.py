@@ -312,7 +312,10 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
             processed_record["dropped_by_session_cap"] = stats[
                 "dropped_by_session_cap"]
             processed_record["candidates"] = {
+                "extracted": stats["candidates_extracted"],
+                "kept": stats["candidates_kept"],
                 "created": stats["candidates_kept"],
+                "duplicates": max(0, len(kept) - len(prepared)),
                 "auto_written": 0, "queued": 0,
                 "dropped_by_session_cap": stats["dropped_by_session_cap"],
                 "dropped_duplicate_summary": stats["dropped_duplicate_summary"],

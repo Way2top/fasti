@@ -214,15 +214,28 @@
                 lines.push("未扫描会话：" + coverage.unscanned_sessions +
                            "；预计还需 " + coverage.estimated_runs_remaining + " 次");
               }
+              var skipped = 0;
               (item.sessions || []).forEach(function (session) {
+                if (session.status === "no-new-messages") { skipped++; return; }
                 var title = session.title || {};
+                var counts = session.candidates || {};
+                var detail = "抽取 " + (counts.extracted !== undefined ? counts.extracted : "-") +
+                  " → 保留 " + (counts.kept !== undefined ? counts.kept : "-");
+                if (counts.dropped_by_session_cap) {
+                  detail += "；上限丢弃 " + counts.dropped_by_session_cap;
+                }
+                if (counts.dropped_duplicate_summary) {
+                  detail += "；重复 summary " + counts.dropped_duplicate_summary;
+                }
+                if (counts.duplicates) { detail += "；重复 " + counts.duplicates; }
                 lines.push((title.text || "不可用") + "（" +
                            (title.source || "unavailable") + "）| " +
-                           (session.decision || "-") + " | " +
-                           (session.reason || "-"));
+                           (session.decision || "-") + " | " + detail);
               });
               if (!(item.sessions || []).length) {
                 lines.push("本次运行没有处理任何会话");
+              } else if (skipped) {
+                lines.push("另有 " + skipped + " 个会话已处理过、本次无新消息");
               }
               window.alert(lines.join("\n"));
             })

@@ -282,20 +282,39 @@ def _cmd_extract_run_detail(data_dir, reference):
                      % (merge.get("before"), merge.get("after"),
                         merge.get("auto_merged"), len(merge.get("suggestion_groups") or [])))
     sessions = run.get("sessions") or []
-    if not sessions:
+    skipped = [session for session in sessions
+               if session.get("status") == "no-new-messages"]
+    processed = [session for session in sessions
+                 if session.get("status") != "no-new-messages"]
+    if not processed:
         lines.append("本次运行没有处理任何会话")
     else:
         lines.append("逐会话：")
-        for session in sessions:
+        for session in processed:
             title = session.get("title") or {}
             text = title.get("text") or "不可用"
             source = title.get("source") or "unavailable"
-            lines.append("  - %s（%s）| %s | %s | 消息 %s | 候选 %s"
+            counts = session.get("candidates") or {}
+            extracted = counts.get("extracted",
+                                   session.get("candidates_extracted"))
+            kept = counts.get("kept", counts.get("created",
+                                                session.get("candidates_kept")))
+            detail = ["抽取 %s → 保留 %s" % (extracted if extracted is not None else "-",
+                                            kept if kept is not None else "-")]
+            if counts.get("dropped_by_session_cap"):
+                detail.append("上限丢弃 %s" % counts["dropped_by_session_cap"])
+            if counts.get("dropped_duplicate_summary"):
+                detail.append("重复 summary %s" % counts["dropped_duplicate_summary"])
+            if counts.get("duplicates"):
+                detail.append("重复 %s" % counts["duplicates"])
+            lines.append("  - %s（%s）| %s | %s | 消息 %s | %s"
                          % (text, source, session.get("decision") or "-",
                             (session.get("reason") or "-")[:60],
                             session.get("user_message_count",
                                        session.get("messages", "-")),
-                            (session.get("candidates") or {}).get("created", "-")))
+                            "；".join(detail)))
+    if skipped:
+        lines.append("另有 %d 个会话已处理过、本次无新消息" % len(skipped))
     counts = (result.get("candidates") or {}).get("counts_by_status") or {}
     lines.append("候选：待审 %s / 通过 %s / 拒绝 %s"
                  % (counts.get("pending", 0), counts.get("approved", 0),

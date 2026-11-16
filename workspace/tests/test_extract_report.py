@@ -149,6 +149,47 @@ class TestRunReport(BaseStoreTest):
             api.get_extract_run(self.data_dir, "bad id!")
         self.assertEqual(ctx.exception.code, "VALIDATION_INVALID_ID")
 
+    def test_detail_filters_no_new_and_shows_candidate_breakdown(self):
+        run_id = "018bcfe5-8000-7a5a-9a5a-5a5a5a5a5a5a"
+        extract_state.append_run(self.data_dir, {
+            "run_id": run_id, "schema_version": 3, "status": "ok",
+            "started_at": "2026-11-16T10:00:00+08:00",
+            "finished_at": "2026-11-16T10:01:00+08:00", "trigger": "manual",
+            "legacy": False, "counters": {}, "coverage": {},
+            "summary_merge": {"before": 0, "after": 0, "auto_merged": 0,
+                              "groups": [], "suggestion_groups": []},
+            "sessions": [
+                {"session_id": "skip1", "status": "no-new-messages"},
+                {"session_id": "skip2", "status": "no-new-messages"},
+                {"session_id": "work", "status": "processed",
+                 "title": {"text": "真实标题", "source": "provider",
+                           "truncated": False},
+                 "decision": "extract", "reason": "项目进展",
+                 "user_message_count": 1,
+                 "candidates": {"extracted": 2, "kept": 1, "created": 1,
+                                "duplicates": 1,
+                                "dropped_by_session_cap": 1,
+                                "dropped_duplicate_summary": 0,
+                                "merged_summaries": 0}}],
+            "recall": {}, "errors": [], "llm": {}})
+        from fasti.adapters import cli_cmds_extract
+        from unittest import mock
+        result = cli_cmds_extract._cmd_extract_runs(
+            mock.Mock(run_id=run_id[:8]), self.data_dir)
+        self.assertEqual(result, 0)
+        import contextlib, io
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            cli_cmds_extract._cmd_extract_runs(mock.Mock(run_id=run_id[:8]),
+                                              self.data_dir)
+        out = buffer.getvalue()
+        self.assertNotIn("skip1", out)
+        self.assertNotIn("不可用（unavailable）| - | -", out)
+        self.assertIn("另有 2 个会话已处理过、本次无新消息", out)
+        self.assertIn("抽取 2 → 保留 1", out)
+        self.assertIn("上限丢弃 1", out)
+        self.assertIn("重复 1", out)
+
     def test_legacy_run(self):
         extract_state.append_run(self.data_dir, {
             "run_id": "018bcfe5-7000-7a5a-9a5a-5a5a5a5a5a5a", "status": "ok"})
