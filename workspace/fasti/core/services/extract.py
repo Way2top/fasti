@@ -204,9 +204,10 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
                 counters["errors"] += 1
                 run_errors.append({"code": exc.code, "session_path": path,
                                    "safe_detail": exc.message[:200]})
-                counters["sessions_failed"] += 1
                 sessions_summary.append({"path": path, "status": "unreadable",
                                          "error_code": exc.code,
+                                         "error_reason": constants.EXTRACT_ERROR_LABELS.get(
+                                             exc.code, "未知错误"),
                                          "watermark_advanced": False})
                 continue
             if session is None:
@@ -237,7 +238,6 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
                 counters["divert_failed"] += 1
                 counters["errors"] += 1
                 run_errors.append({"code": exc.code, "safe_detail": exc.message[:200]})
-                counters["sessions_failed"] += 1
                 failed_record = diversion_record(
                     session, divert_input, "divert_failed", "skip",
                     exc.message[:120], exc.code)

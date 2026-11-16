@@ -319,21 +319,23 @@ def _cmd_extract_run_detail(data_dir, reference):
             if error_code:
                 error_text = " | 错误 %s（%s）" % (
                     error_code,
-                    constants.EXTRACT_ERROR_LABELS.get(error_code, "未知错误"))
+                    session.get("error_reason")
+                    or constants.EXTRACT_ERROR_LABELS.get(error_code, "未知错误"))
             lines.append("  - %s（%s）| %s | %s | 消息 %s | %s%s"
                          % (text, source, session.get("decision") or "-",
                             (session.get("reason") or "-")[:60],
                             session.get("user_message_count",
                                        session.get("messages", "-")),
                             "；".join(detail), error_text))
-    failed = [session for session in processed
-              if session.get("status") in ("failed", "divert_failed", "unreadable")]
-    if failed:
+    failed = [session for session in processed if session.get("status") == "failed"]
+    failed_count = int((run.get("counters") or {}).get("sessions_failed",
+                                                       len(failed)))
+    if failed_count:
         codes = sorted({session.get("error_code") or session.get("code") or ""
                         for session in failed})
         labels_text = "、".join(
             constants.EXTRACT_ERROR_LABELS.get(code, "未知错误") for code in codes)
-        lines.append("失败 %d 个会话（%s，下次重试）" % (len(failed), labels_text))
+        lines.append("失败 %d 个会话（%s，下次重试）" % (failed_count, labels_text))
     if skipped:
         lines.append("另有 %d 个会话已处理过、本次无新消息" % len(skipped))
     counts = (result.get("candidates") or {}).get("counts_by_status") or {}

@@ -4,6 +4,7 @@ import json
 
 from test_extract_run import (ExtractRuntimeBase, _envelope, _write_session,
                              SESSION_ID)
+import os
 import socket
 import urllib.error
 from fasti.core import api, errors, extract_llm, extract_state
@@ -253,3 +254,62 @@ class TestGlobalFatal(ExtractRuntimeBase):
         marks, _ = extract_state.load_watermarks(self.data_dir)
         self.assertNotIn("s1", marks["sessions"])
         self.assertIn("s2", marks["sessions"])
+
+
+class TestContractCounters(ExtractRuntimeBase):
+    def test_mixed_statuses_failed_counter_excludes_divert_and_unreadable(self):
+        _write_session(self.dsh_home, ["抽取失败会话"], session="s1", session_id="s1")
+        _write_session(self.dsh_home, ["分流失败会话"], session="s2", session_id="s2")
+        _write_session(self.dsh_home, ["正常会话"], session="s4", session_id="s4")
+        bad_dir = os.path.join(self.dsh_home, "sessions", "ws", "s3")
+        os.makedirs(bad_dir)
+        with open(os.path.join(bad_dir, "session.v4.jsonl.zstd"), "wb") as handle:
+            handle.write(b"not a zstd file")
+        self._enable(auto_write=False)
+        good_id = extract_state.candidate_id_for(
+            "s4", ["m1"], "正常会话", "tech", "new")
+        def transport(url, headers, body, timeout):
+            payload = json.loads(body.decode())
+            system = payload["messages"][0]["content"]
+            if "分流" in system:
+                user = json.loads(payload["messages"][1]["content"])
+                if user.get("first_user_message") == "分流失败会话":
+                    return 200, _envelope("{not json")
+                return 200, _envelope(json.dumps({"decision": "extract",
+                                                  "reason": "x"}))
+            if "可用类别" in system:
+                text = json.loads(payload["messages"][1]["content"])[0]["text"]
+                if text == "抽取失败会话":
+                    return 200, _envelope("{not json")
+                return 200, _envelope(json.dumps(_valid_extraction("m1", "正常会话")))
+            return 200, _envelope(json.dumps({"judgments": [{
+                "candidate_id": good_id, "relation": "new", "target_fact_id": None,
+                "relation_confidence": 0.9, "rationale": "x"}]}))
+        extract_llm.set_transport(transport)
+        run = api.extract_run(self.data_dir, trigger="manual")
+        self.assertEqual(run["status"], "partial")
+        self.assertEqual(run["counters"]["sessions_failed"], 1)   # 只算 failed
+        by_status = {session["status"]: session for session in run["sessions"]}
+        self.assertEqual(by_status["failed"]["error_code"],
+                         "EXTRACT_LLM_INVALID_RESPONSE")
+        self.assertEqual(by_status["divert_failed"]["error_code"],
+                         "EXTRACT_LLM_INVALID_RESPONSE")
+        self.assertEqual(by_status["unreadable"]["error_code"],
+                         "EXTRACT_SESSION_UNREADABLE")
+        for status in ("failed", "divert_failed", "unreadable"):
+            self.assertTrue(by_status[status]["error_reason"])
+            self.assertFalse(by_status[status]["watermark_advanced"])
+        self.assertTrue(by_status["processed"]["watermark_advanced"])
+        for session in run["sessions"]:
+            self.assertNotEqual(session["status"], "diversion_extract")
+        from fasti.adapters import cli_cmds_extract
+        from unittest import mock
+        import contextlib, io
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            cli_cmds_extract._cmd_extract_runs(
+                mock.Mock(run_id=run["run_id"]), self.data_dir)
+        out = buffer.getvalue()
+        self.assertIn("失败 1 个会话", out)
+        for code in ("EXTRACT_LLM_INVALID_RESPONSE", "EXTRACT_SESSION_UNREADABLE"):
+            self.assertIn(code, out)

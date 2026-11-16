@@ -263,7 +263,8 @@
                 if (counts.duplicates) { detail += "；重复 " + counts.duplicates; }
                 var errorCode = session.error_code || session.code;
                 if (errorCode) {
-                  detail += " | 错误 " + errorCode + "（" + errorLabel(errorCode) + "）";
+                  detail += " | 错误 " + errorCode + "（" +
+                    (session.error_reason || errorLabel(errorCode)) + "）";
                 }
                 lines.push((title.text || "不可用") + "（" +
                            (title.source || "unavailable") + "）| " +
@@ -273,20 +274,21 @@
                             session.user_message_count : "-") + " | " + detail);
               });
               var failed = (item.sessions || []).filter(function (session) {
-                return session.status === "failed" ||
-                       session.status === "divert_failed" ||
-                       session.status === "unreadable";
+                return session.status === "failed";   // 契约：仅 status=failed
               });
               if (!(item.sessions || []).length) {
                 lines.push("本次运行没有处理任何会话");
               } else {
-                if (failed.length) {
+                var failedCount = ((item.counters || {}).sessions_failed ||
+                                   failed.length);
+                if (failedCount) {
                   var failedLabels = [];
                   failed.forEach(function (session) {
-                    var label = errorLabel(session.error_code || session.code);
+                    var label = session.error_reason ||
+                      errorLabel(session.error_code || session.code);
                     if (failedLabels.indexOf(label) < 0) { failedLabels.push(label); }
                   });
-                  lines.push("失败 " + failed.length + " 个会话（" +
+                  lines.push("失败 " + failedCount + " 个会话（" +
                              failedLabels.join("、") + "，下次重试）");
                 }
                 if (skipped) {

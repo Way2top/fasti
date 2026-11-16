@@ -157,6 +157,7 @@ def diversion_record(session, divert_input, status, decision=None, reason=None,
     }
     if error_code:
         record["error_code"] = error_code
+        record["error_reason"] = constants.EXTRACT_ERROR_LABELS.get(error_code, "未知错误")
     return record
 
 
