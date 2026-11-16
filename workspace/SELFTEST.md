@@ -87,8 +87,8 @@
 | ST-48 | AC-13-1~13-5（防呆） | `node --check fasti/adapters/web_static/app.js` + 断言 IIFE 首尾行 | 修复 R-F1 后 **exit 0**（修复前 `SyntaxError: Unexpected token '}'`，exit 1）；断言首行 `(function () {`、次行 `"use strict";`、倒数第二行 `})();` | ✅ |
 | ST-49 | 静态资源完整性（防呆） | 检查 `web_static/` 三文件存在/非空/单末尾 LF、`index.html` 仅同源引用、零外部 URL、与基线内联内容 sha256 一致 | 全部通过；`app.js` 内容 sha256 `0fb916a6…`、`style.css` 内容 sha256 `d6e0c406…` 与 `git show refactor-baseline:…/index.html` 的内联内容**逐字节相同** | ✅ |
 
-**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **241 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
-自动化测试：`Ran 241 tests … OK`（见 §4.1 与 §13）。
+**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **243 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
+自动化测试：`Ran 243 tests … OK`（见 §4.1 与 §13）。
 > 注：下表 ST-01~ST-47 中出现的 `fact-0001` / `line-0001` / `cat-0002` 为 **v1（序号方案）历史记录**；C-06 迁移后同一行为以 UUIDv7 + 短前缀复现，见 §9。
 
 ---
@@ -99,9 +99,9 @@
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests -v
-…（241 个用例，全 ok）
+…（243 个用例，全 ok）
 ----------------------------------------------------------------------
-Ran 241 tests in 8.173s
+Ran 243 tests in 8.45s
 
 OK
 ```
@@ -308,7 +308,7 @@ python3 -V                     # 期望 3.9+（实测 3.13.3）
 python3 -c "import sqlite3; print(sqlite3.sqlite_version)"   # 期望 >= 3.38（需 JSON1）
 ```
 
-### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，241 用例）
+### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，243 用例）
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -1481,7 +1481,7 @@ README 与 manifest 版本一致: True
 
 ```
 $ python3 -m unittest discover -s tests
-Ran 241 tests in 8.173s
+Ran 243 tests in 8.45s
 OK
 $ python3 run.py --data-dir <tmp> extract status     # 关闭/同意/配置/待审/水位
 $ python3 run.py --data-dir <tmp> extract config --base-url ... --model ...
@@ -1951,3 +1951,31 @@ $ python3 run.py --data-dir /tmp/fasti-realtest extract
 - 测试（237→241）：UNREACHABLE/TIMEOUT/HTTP_ERROR ⇒ run=failed、第二会话未调用 LLM、
   水位为空；INVALID_RESPONSE 连续失败仍 partial；分流层 UNREACHABLE 仍 partial（坏会话
   divert_failed、好会话 processed+候选）；失败会话不推进、成功会话保留。
+
+### 13.22 ADR-038 复核 4 条（fatal 状态/观测/重试计数/逐会话错误）
+
+- **AC-18-5**：全局 fatal（ZSTD/UNREACHABLE/TIMEOUT/HTTP_ERROR）⇒ run=**failed**，
+  即使此前有成功会话；成功会话候选/水位保留；`partial` 仅用于无全局 fatal 的单会话隔离失败。
+- **AC-18-12**：`counters.sessions_failed`；`sessions[].watermark_advanced`
+  （失败 false、成功/正常 skip true、no-new false）；失败项 `error_code`（含 unreadable）。
+- **AC-18-14**：`extract_llm.retry_stats`；run 写 `counters.retry_calls` 与
+  `llm.retry_reasons{invalid_response,truncated}`。
+- **AC-18-13**：`constants.EXTRACT_ERROR_LABELS`；CLI/Web 逐会话
+  「错误 CODE（中文说明）」；汇总 N == 逐会话失败数（含 unreadable）；Web 增加
+  `ERROR_LABELS/errorLabel`，不再固定「抽取响应非法」。
+- **实测 fatal-after-success**：
+  ```
+  raised EXTRACT_LLM_HTTP_ERROR
+  run.status=failed | sessions_failed=1 | retry_calls=0
+  sessions=[(s1,processed,None,True),(s2,failed,EXTRACT_LLM_HTTP_ERROR,False)]
+  pending=1；watermarks=['s1']
+  ```
+- **CLI 两错误码展示**：
+  ```
+  - 会话A（provider）| extract | … | 错误 EXTRACT_LLM_TIMEOUT（LLM 调用超时）
+  - 会话B（provider）| extract | … | 错误 EXTRACT_LLM_INVALID_RESPONSE（抽取响应非法 JSON）
+  失败 2 个会话（抽取响应非法 JSON、LLM 调用超时，下次重试）
+  ```
+- **测试（241→243）**：fatal-after-success（failed/成功保留/后续不处理）、
+  sessions_failed/watermark_advanced、retry_calls/retry_reasons、CLI 两错误码逐条+汇总；
+  INVALID_RESPONSE 连续失败仍 partial。
