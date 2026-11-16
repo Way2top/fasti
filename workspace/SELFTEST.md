@@ -87,8 +87,8 @@
 | ST-48 | AC-13-1~13-5（防呆） | `node --check fasti/adapters/web_static/app.js` + 断言 IIFE 首尾行 | 修复 R-F1 后 **exit 0**（修复前 `SyntaxError: Unexpected token '}'`，exit 1）；断言首行 `(function () {`、次行 `"use strict";`、倒数第二行 `})();` | ✅ |
 | ST-49 | 静态资源完整性（防呆） | 检查 `web_static/` 三文件存在/非空/单末尾 LF、`index.html` 仅同源引用、零外部 URL、与基线内联内容 sha256 一致 | 全部通过；`app.js` 内容 sha256 `0fb916a6…`、`style.css` 内容 sha256 `d6e0c406…` 与 `git show refactor-baseline:…/index.html` 的内联内容**逐字节相同** | ✅ |
 
-**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **228 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
-自动化测试：`Ran 228 tests … OK`（见 §4.1 与 §13）。
+**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **230 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
+自动化测试：`Ran 230 tests … OK`（见 §4.1 与 §13）。
 > 注：下表 ST-01~ST-47 中出现的 `fact-0001` / `line-0001` / `cat-0002` 为 **v1（序号方案）历史记录**；C-06 迁移后同一行为以 UUIDv7 + 短前缀复现，见 §9。
 
 ---
@@ -99,9 +99,9 @@
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests -v
-…（228 个用例，全 ok）
+…（230 个用例，全 ok）
 ----------------------------------------------------------------------
-Ran 228 tests in 7.493s
+Ran 230 tests in 7.390s
 
 OK
 ```
@@ -308,7 +308,7 @@ python3 -V                     # 期望 3.9+（实测 3.13.3）
 python3 -c "import sqlite3; print(sqlite3.sqlite_version)"   # 期望 >= 3.38（需 JSON1）
 ```
 
-### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，228 用例）
+### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，230 用例）
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -1481,7 +1481,7 @@ README 与 manifest 版本一致: True
 
 ```
 $ python3 -m unittest discover -s tests
-Ran 228 tests in 7.493s
+Ran 230 tests in 7.390s
 OK
 $ python3 run.py --data-dir <tmp> extract status     # 关闭/同意/配置/待审/水位
 $ python3 run.py --data-dir <tmp> extract config --base-url ... --model ...
@@ -1882,3 +1882,21 @@ $ python3 run.py --data-dir /tmp/fasti-realtest extract
   消息，故候选会话 20 —— 与真实一致。
 - **测试（227→228）**：no-new 不出现空行、汇总行、候选分项（抽取/保留/上限丢弃/重复）、
   M3 记录 candidates 分项、前端汇总断言。
+
+### 13.18 C-11 QA 6 条修复（限额/消息数/CLI/Web 字段）
+
+- **AC-20-2**：`max_sessions_per_run` 仅统计「候选 root（有用户消息）且本次有新消息」；
+  子 agent/空 root/no-new 不再消耗限额；`sessions_attempted` 真实写运行记录与 coverage。
+  真实只读会话（~/.dsh 副本 + mock LLM，仅临时 store）：
+  ```
+  run1 attempted=10 scanned_this=10 total=20 unscanned=10 estimated=1
+  run2 attempted=10 scanned_this=10 total=20 unscanned=0 estimated=0
+  ```
+- **AC-20-1/4**：sessions[] 顶层写 `user_message_count/messages`，skip 会话也显示消息数
+  （真实详情示例：`skip | … | 消息 12`）；unavailable 只用于需处理但无标题。
+- **AC-20-3**：CLI 列表新增「进入抽取」列。
+- **AC-20-5/6/8**：Web 列表行含会话数/进入抽取/候选数/未扫描；详情含 reason、
+  user_message_count、summary_merge（before→after/自动合并/提示组）。
+- **覆盖行**：拆成「累计已扫描 X/总，本次 Y」；旧 run 仍 `-/-`，标注旧记录不完整。
+- **测试（228→230）**：20 候选+15 子 agent+3 空 root、limit10 两轮归零/attempted=10/
+  estimated 1→0；skip 消息数；CLI 进入抽取列；Web 字段/汇总。
