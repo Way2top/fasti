@@ -96,6 +96,7 @@ def _base_url(cfg):
 
 _USAGE_TOTALS = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0,
                  "reasoning_tokens": 0}
+_RETRY_STATS = {"total": 0, "reasons": {}}
 _LAST_USAGE = {}
 
 
@@ -106,6 +107,16 @@ def reset_usage_totals():
 
 def usage_totals():
     return dict(_USAGE_TOTALS)
+
+
+def reset_retry_stats():
+    _RETRY_STATS["total"] = 0
+    _RETRY_STATS["reasons"] = {}
+
+
+def retry_stats():
+    return {"total": _RETRY_STATS["total"],
+            "reasons": dict(_RETRY_STATS["reasons"])}
 
 
 def last_usage():
@@ -216,11 +227,17 @@ def complete_json(cfg, messages, validator, max_tokens=800,
             if exc.code == "EXTRACT_LLM_INVALID_RESPONSE" \
                     and invalid_attempts < JSON_RETRY_LIMIT:
                 invalid_attempts += 1
+                _RETRY_STATS["total"] += 1
+                _RETRY_STATS["reasons"]["invalid_response"] = (
+                    _RETRY_STATS["reasons"].get("invalid_response", 0) + 1)
                 extra = [{"role": "user", "content": JSON_CORRECTION}]
                 continue
             if exc.code == "EXTRACT_LLM_TRUNCATED" \
                     and truncated_attempts < TRUNCATED_RETRY_LIMIT:
                 truncated_attempts += 1
+                _RETRY_STATS["total"] += 1
+                _RETRY_STATS["reasons"]["truncated"] = (
+                    _RETRY_STATS["reasons"].get("truncated", 0) + 1)
                 continue
             raise
 

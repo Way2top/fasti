@@ -40,6 +40,8 @@ class TestRetry(ExtractRuntimeBase):
         run = api.extract_run(self.data_dir, trigger="manual")
         self.assertEqual(run["status"], "ok")
         self.assertEqual(state["extract_calls"], 2)      # 1 次失败 + 1 次成功
+        self.assertEqual(run["counters"]["retry_calls"], 1)
+        self.assertEqual(run["llm"]["retry_reasons"], {"invalid_response": 1})
         self.assertEqual(len(api.list_extract_candidates(
             self.data_dir, "pending")["items"]), 1)
 
@@ -63,6 +65,8 @@ class TestRetry(ExtractRuntimeBase):
         run = api.extract_run(self.data_dir, trigger="manual")
         self.assertEqual(run["status"], "ok")
         self.assertEqual(state["extract_calls"], 2)
+        self.assertEqual(run["counters"]["retry_calls"], 1)
+        self.assertEqual(run["llm"]["retry_reasons"], {"truncated": 1})
 
     def test_one_session_failure_isolated_partial(self):
         _write_session(self.dsh_home, ["第一会话"], session="s1", session_id="s1")
@@ -88,10 +92,16 @@ class TestRetry(ExtractRuntimeBase):
         extract_llm.set_transport(transport)
         run = api.extract_run(self.data_dir, trigger="manual")
         self.assertEqual(run["status"], "partial")
+        self.assertEqual(run["counters"]["sessions_failed"], 1)
+        self.assertEqual(run["counters"]["retry_calls"], 2)
+        self.assertEqual(run["llm"]["retry_reasons"], {"invalid_response": 2})
         self.assertEqual(state["bad_calls"], 3)          # 初始 + 2 次重试
         failed = [s for s in run["sessions"] if s["status"] == "failed"]
         self.assertEqual(len(failed), 1)
         self.assertEqual(failed[0]["error_code"], "EXTRACT_LLM_INVALID_RESPONSE")
+        self.assertFalse(failed[0]["watermark_advanced"])
+        processed = [s for s in run["sessions"] if s["status"] == "processed"]
+        self.assertTrue(processed[0]["watermark_advanced"])
         marks, _ = extract_state.load_watermarks(self.data_dir)
         self.assertNotIn("s1", marks["sessions"])
         self.assertIn("s2", marks["sessions"])
@@ -166,6 +176,52 @@ class TestGlobalFatal(ExtractRuntimeBase):
     def test_http_error_is_global_fatal(self):
         self._two_sessions()
         self._run_fatal("http")
+
+    def test_fatal_after_success_is_failed_and_keeps_success(self):
+        self._two_sessions()
+        _write_session(self.dsh_home, ["第三会话"], session="s3", session_id="s3")
+        candidate_id = extract_state.candidate_id_for(
+            "s1", ["m1"], "第一会话", "tech", "new")
+        seen = []
+        def transport(url, headers, body, timeout):
+            payload = json.loads(body.decode())
+            system = payload["messages"][0]["content"]
+            if "分流" in system:
+                return 200, _envelope(json.dumps({"decision": "extract",
+                                                  "reason": "x"}))
+            if "可用类别" in system:
+                user = json.loads(payload["messages"][1]["content"])
+                text = user[0]["text"]
+                seen.append(text)
+                if text == "第二会话":
+                    return 503, b""
+                return 200, _envelope(json.dumps({
+                    "candidates": [{"content": text, "category_key": "tech",
+                                    "granularity": "atomic", "subject": None,
+                                    "time_hint": None, "extraction_confidence": 0.9,
+                                    "evidence": {"message_ids": ["m1"]}}]}))
+            return 200, _envelope(json.dumps({"judgments": [{
+                "candidate_id": candidate_id, "relation": "new",
+                "target_fact_id": None, "relation_confidence": 0.9,
+                "rationale": "x"}]}))
+        extract_llm.set_transport(transport)
+        with self.assertRaises(errors.CoreError):
+            api.extract_run(self.data_dir, trigger="manual")
+        run = api.list_extract_runs(self.data_dir)["items"][0]
+        self.assertEqual(run["status"], "failed")       # 即使 s1 成功
+        self.assertEqual(run["counters"]["sessions_failed"], 1)
+        self.assertEqual(run["counters"]["retry_calls"], 0)
+        self.assertNotIn("第三会话", seen)
+        statuses = {s["session_id"]: s for s in run["sessions"]}
+        self.assertTrue(statuses["s1"]["watermark_advanced"])
+        self.assertFalse(statuses["s2"]["watermark_advanced"])
+        self.assertEqual(statuses["s2"]["error_code"], "EXTRACT_LLM_HTTP_ERROR")
+        self.assertNotIn("s3", statuses)
+        marks, _ = extract_state.load_watermarks(self.data_dir)
+        self.assertIn("s1", marks["sessions"])
+        self.assertNotIn("s2", marks["sessions"])
+        self.assertEqual(len(api.list_extract_candidates(
+            self.data_dir, "pending")["items"]), 1)
 
     def test_divert_unreachable_still_isolated(self):
         self._two_sessions()

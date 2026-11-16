@@ -324,7 +324,34 @@ class TestRunReport(BaseStoreTest):
         with contextlib.redirect_stdout(buffer):
             cli_cmds_extract._cmd_extract_runs(
                 mock.Mock(run_id="018bcfe5-b000"), self.data_dir)
-        self.assertIn("失败 1 个会话（抽取响应非法，下次重试）", buffer.getvalue())
+        self.assertIn("失败 1 个会话（抽取响应非法 JSON，下次重试）", buffer.getvalue())
+
+    def test_cli_per_session_error_codes(self):
+        extract_state.append_run(self.data_dir, {
+            "run_id": "018bcfe5-c000-7a5a-9a5a-5a5a5a5a5a5a", "schema_version": 3,
+            "status": "failed", "started_at": "2026-11-16T10:00:00+08:00",
+            "counters": {"sessions_failed": 2}, "coverage": {}, "summary_merge": {},
+            "sessions": [
+                {"session_id": "a", "status": "failed", "decision": "extract",
+                 "title": {"text": "会话A", "source": "provider"},
+                 "error_code": "EXTRACT_LLM_TIMEOUT", "watermark_advanced": False,
+                 "user_message_count": 1},
+                {"session_id": "b", "status": "failed", "decision": "extract",
+                 "title": {"text": "会话B", "source": "provider"},
+                 "error_code": "EXTRACT_LLM_INVALID_RESPONSE",
+                 "watermark_advanced": False, "user_message_count": 2}],
+            "errors": []})
+        from fasti.adapters import cli_cmds_extract
+        from unittest import mock
+        import contextlib, io
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            cli_cmds_extract._cmd_extract_runs(
+                mock.Mock(run_id="018bcfe5-c000"), self.data_dir)
+        out = buffer.getvalue()
+        self.assertIn("错误 EXTRACT_LLM_TIMEOUT（LLM 调用超时）", out)
+        self.assertIn("错误 EXTRACT_LLM_INVALID_RESPONSE（抽取响应非法 JSON）", out)
+        self.assertIn("失败 2 个会话（抽取响应非法 JSON、LLM 调用超时，下次重试）", out)
 
     def test_legacy_run(self):
         extract_state.append_run(self.data_dir, {

@@ -162,8 +162,10 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
     run_id = ids.new_uuid7()
     started_at = clock.now_recorded_at()
     extract_llm.reset_usage_totals()
+    extract_llm.reset_retry_stats()
     counters = _empty_counters()
     counters.update({"sessions_entered_extraction": 0, "sessions_attempted": 0,
+                     "sessions_failed": 0, "retry_calls": 0,
                      "divert_extract": 0, "divert_skip": 0, "divert_failed": 0})
     run_errors = []
     fatal_error = None
@@ -202,8 +204,10 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
                 counters["errors"] += 1
                 run_errors.append({"code": exc.code, "session_path": path,
                                    "safe_detail": exc.message[:200]})
+                counters["sessions_failed"] += 1
                 sessions_summary.append({"path": path, "status": "unreadable",
-                                         "code": exc.code})
+                                         "error_code": exc.code,
+                                         "watermark_advanced": False})
                 continue
             if session is None:
                 counters["sessions_skipped"] += 1
@@ -220,7 +224,8 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
             if not new_messages:
                 counters["sessions_skipped"] += 1
                 sessions_summary.append({"session_id": session["session_id"],
-                                         "status": "no-new-messages"})
+                                         "status": "no-new-messages",
+                                         "watermark_advanced": False})
                 continue
             if counters.get("sessions_attempted", 0) >= limit_sessions:
                 break  # 限额只计「候选 root + 有新消息」的真正待处理会话
@@ -232,9 +237,12 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
                 counters["divert_failed"] += 1
                 counters["errors"] += 1
                 run_errors.append({"code": exc.code, "safe_detail": exc.message[:200]})
-                sessions_summary.append(
-                    diversion_record(session, divert_input, "divert_failed",
-                                     "skip", exc.message[:120], exc.code))
+                counters["sessions_failed"] += 1
+                failed_record = diversion_record(
+                    session, divert_input, "divert_failed", "skip",
+                    exc.message[:120], exc.code)
+                failed_record["watermark_advanced"] = False
+                sessions_summary.append(failed_record)
                 continue  # 失败不推进水位，下次重试；不中断整次运行
             llm_calls += 1
             if diversion["decision"] == "skip":
@@ -242,9 +250,11 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
                 if not dry_run:
                     advance_watermark(data_dir, watermarks, session, path,
                                       new_messages, run_id)
-                sessions_summary.append(
-                    diversion_record(session, divert_input, "diversion_skip",
-                                     "skip", diversion["reason"]))
+                skipped_record = diversion_record(
+                    session, divert_input, "diversion_skip", "skip",
+                    diversion["reason"])
+                skipped_record["watermark_advanced"] = True
+                sessions_summary.append(skipped_record)
                 continue
             counters["divert_extract"] += 1
             counters["sessions_entered_extraction"] += 1
@@ -296,7 +306,9 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
                 failed_record = diversion_record(
                     session, divert_input, "failed", "extract",
                     "抽取/判定失败，下次重试", exc.code)
+                counters["sessions_failed"] += 1
                 failed_record["messages"] = len(new_messages)
+                failed_record["watermark_advanced"] = False
                 sessions_summary.append(failed_record)
                 if exc.code in constants.EXTRACT_GLOBAL_FATAL_CODES:
                     fatal_error = exc
@@ -308,6 +320,7 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
             processed_record = diversion_record(
                 session, divert_input, "processed", "extract", diversion["reason"])
             processed_record["messages"] = len(new_messages)
+            processed_record["watermark_advanced"] = True
             processed_record["candidates_extracted"] = stats["candidates_extracted"]
             processed_record["candidates_after_dedup"] = stats["candidates_after_dedup"]
             processed_record["candidates_kept"] = stats["candidates_kept"]
@@ -333,11 +346,15 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
                       for session in sessions_summary)
     has_success = any(session.get("status") in ("processed", "diversion_skip")
                       for session in sessions_summary)
-    if has_failure:
+    if fatal_error is not None:
+        status = "failed"          # ADR-038：全局 fatal 一律 failed（成功结果保留）
+    elif has_failure:
         status = "partial" if (has_success or counters["candidates_created"]) else "failed"
     else:
         status = "ok"
     finished_at = clock.now_recorded_at()
+    retry_stats = extract_llm.retry_stats()
+    counters["retry_calls"] = retry_stats["total"]
     run = {
         "run_id": run_id,
         "schema_version": constants.EXTRACT_STATE_SCHEMA_VERSION,
@@ -357,7 +374,8 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
                             "judgment": constants.EXTRACT_PROMPT_JUDGMENT},
                 "prompt_sha256": __import__("hashlib").sha256(
                     constants.EXTRACT_PROMPT_EXTRACTION.encode("utf-8")).hexdigest(),
-                "usage": extract_llm.usage_totals()},
+                "usage": extract_llm.usage_totals(),
+                "retry_reasons": retry_stats["reasons"]},
         "watermark_rebuilt": bool(rebuilt),
         "sessions": sessions_summary,
         "summary_merge": merge_totals,
