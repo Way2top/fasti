@@ -87,8 +87,8 @@
 | ST-48 | AC-13-1~13-5（防呆） | `node --check fasti/adapters/web_static/app.js` + 断言 IIFE 首尾行 | 修复 R-F1 后 **exit 0**（修复前 `SyntaxError: Unexpected token '}'`，exit 1）；断言首行 `(function () {`、次行 `"use strict";`、倒数第二行 `})();` | ✅ |
 | ST-49 | 静态资源完整性（防呆） | 检查 `web_static/` 三文件存在/非空/单末尾 LF、`index.html` 仅同源引用、零外部 URL、与基线内联内容 sha256 一致 | 全部通过；`app.js` 内容 sha256 `0fb916a6…`、`style.css` 内容 sha256 `d6e0c406…` 与 `git show refactor-baseline:…/index.html` 的内联内容**逐字节相同** | ✅ |
 
-**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **219 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
-自动化测试：`Ran 219 tests … OK`（见 §4.1 与 §13）。
+**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **232 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
+自动化测试：`Ran 232 tests … OK`（见 §4.1 与 §13）。
 > 注：下表 ST-01~ST-47 中出现的 `fact-0001` / `line-0001` / `cat-0002` 为 **v1（序号方案）历史记录**；C-06 迁移后同一行为以 UUIDv7 + 短前缀复现，见 §9。
 
 ---
@@ -99,9 +99,9 @@
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests -v
-…（219 个用例，全 ok）
+…（232 个用例，全 ok）
 ----------------------------------------------------------------------
-Ran 219 tests in 7.395s
+Ran 232 tests in 7.524s
 
 OK
 ```
@@ -308,7 +308,7 @@ python3 -V                     # 期望 3.9+（实测 3.13.3）
 python3 -c "import sqlite3; print(sqlite3.sqlite_version)"   # 期望 >= 3.38（需 JSON1）
 ```
 
-### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，219 用例）
+### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，232 用例）
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -1481,7 +1481,7 @@ README 与 manifest 版本一致: True
 
 ```
 $ python3 -m unittest discover -s tests
-Ran 219 tests in 7.395s
+Ran 232 tests in 7.524s
 OK
 $ python3 run.py --data-dir <tmp> extract status     # 关闭/同意/配置/待审/水位
 $ python3 run.py --data-dir <tmp> extract config --base-url ... --model ...
@@ -1825,3 +1825,90 @@ $ python3 run.py --data-dir /tmp/fasti-realtest extract
   llm.usage: calls=33, prompt_tokens=23293, completion_tokens=15998, reasoning_tokens=10286
   ```
 - **测试（218→219）**：thinking 必须是对象、默认不发送；usage/reasoning 累计；token 公式更新。
+
+### 13.16 C-11：提取运行报告 + summary 同项目合并（state schema 3）
+
+- **state schema 3（仅过程状态；format/DDL 保持 4）**：候选 `subject_aliases/merge`；run
+  `coverage/summary_merge/sessions[].title{text,source,truncated}/legacy`；旧 run（schema<3）
+  派生 `legacy=true`、缺失字段 null，不回填；旧候选读取补 null；CLI/Web 明示「旧记录信息不完整」。
+- **summary 合并（ADR-037）实测**：4 条同项目 + 1 条健身：
+  ```
+  before=5  after=3  auto_merged=2
+  kept: 个人记忆系统 Fasti (auto merge; merged_from: Fasti 项目 / Fasti 个人记忆系统开发)
+        AI memory 方向的开源项目（PMS） (auto=false; suggestion similarity=0.286)
+        健身计划 (未误合)
+  suggestion_groups: tech [个人记忆系统 Fasti, AI memory…（PMS）] 无法自动判定，请人工确认
+  ```
+  自动合并条件：canonical 相等 / alias 交集 / 相似≥0.85（长度门槛）；保留按置信度→内容长→
+  新近→ID；merged_from 留 subject/hash/message_ids/chunk_id。
+- **coverage（38 会话、首跑已扫描 10）**：
+  `total=38, unscanned=28, estimated_runs_remaining=3`；全部扫描后 `unscanned=0/剩余=0`；
+  skip 推进水位算已扫描、分流失败不推进算未扫描；零 LLM。
+- **CLI**：
+  ```
+  $ fasti extract runs
+  ... 018bcfe5… | ok | 1/2 | 1/0/1 | 28/3 | 0
+  $ fasti extract runs 018bcfe5
+  覆盖：候选会话 38，已扫描/本次 10/10，未扫描 28，预计还需 3 次
+  summary 合并：2 → 1（自动合并 1，提示 0 组）
+  逐会话：- Fasti 项目讨论（provider）| extract | 项目进展，产出 1 条 summary | 消息 2 | 候选 1
+  $ fasti extract queue --run 018bcfe5…
+  cand-aaaaaaaaaaaaaaaaaaaa | 正在做 Fasti 项目 | tech | ...
+  ```
+  run_id 短前缀可用；0 命中 `EXTRACT_RUN_NOT_FOUND`、>1 `VALIDATION_AMBIGUOUS_REFERENCE`、
+  非法 `VALIDATION_INVALID_ID`；无会话输出「本次运行没有处理任何会话」。
+- **Web**：`GET /api/extract/runs?limit=10`、`/runs/{run_id}`、`/candidates?run_id=`；
+  网页运行记录显示 run/coverage（28、预计 3）/逐会话标题+来源+判定+理由/本次候选；
+  旧 run 标注「旧记录信息不完整」；页面加载仍不触发提取。
+- **测试（219→227）**：merge 4 条/跨类别/atomic；coverage 38/28/3/0；CLI 列表+短前缀详情；
+  run_id 错误码；旧 run legacy；候选 run 过滤；Web runs 列表/details/过滤；C-10 回归全绿。
+
+### 13.17 C-11 显示层修复（no-new 会话 / 候选分项）
+
+- **问题 1**：no-new-messages 会话不再进入逐会话详情列表，改为末尾汇总
+  「另有 N 个会话已处理过、本次无新消息」；title.source=unavailable 仅表示确实需要处理但
+  拿不到标题，不再覆盖跳过场景。
+- **问题 2**：逐会话显示「抽取 X → 保留 Y；上限丢弃 N；重复 summary N；重复 N」，
+  区分抽取 0 / 会话级上限丢弃 / 全部重复。
+- **真实只读展示（~/.fasti，未新跑提取）**：
+  ```
+  $ fasti extract runs 01a1e4a1
+  覆盖：候选会话 20，已扫描/本次 1/1，未扫描 19，预计还需 2 次
+  逐会话：
+    - 为PMS项目创建子代理角色（provider）| extract | … | 消息 1 | 抽取 0 → 保留 0
+  另有 2 个会话已处理过、本次无新消息
+  ```
+- **覆盖口径确认**：38 个会话文件 = 23 个根会话 + 15 个子 agent；23 个根会话中 3 个无用户
+  消息，故候选会话 20 —— 与真实一致。
+- **测试（227→228）**：no-new 不出现空行、汇总行、候选分项（抽取/保留/上限丢弃/重复）、
+  M3 记录 candidates 分项、前端汇总断言。
+
+### 13.18 C-11 QA 6 条修复（限额/消息数/CLI/Web 字段）
+
+- **AC-20-2**：`max_sessions_per_run` 仅统计「候选 root（有用户消息）且本次有新消息」；
+  子 agent/空 root/no-new 不再消耗限额；`sessions_attempted` 真实写运行记录与 coverage。
+  真实只读会话（~/.dsh 副本 + mock LLM，仅临时 store）：
+  ```
+  run1 attempted=10 scanned_this=10 total=20 unscanned=10 estimated=1
+  run2 attempted=10 scanned_this=10 total=20 unscanned=0 estimated=0
+  ```
+- **AC-20-1/4**：sessions[] 顶层写 `user_message_count/messages`，skip 会话也显示消息数
+  （真实详情示例：`skip | … | 消息 12`）；unavailable 只用于需处理但无标题。
+- **AC-20-3**：CLI 列表新增「进入抽取」列。
+- **AC-20-5/6/8**：Web 列表行含会话数/进入抽取/候选数/未扫描；详情含 reason、
+  user_message_count、summary_merge（before→after/自动合并/提示组）。
+- **覆盖行**：拆成「累计已扫描 X/总，本次 Y」；旧 run 仍 `-/-`，标注旧记录不完整。
+- **测试（228→230）**：20 候选+15 子 agent+3 空 root、limit10 两轮归零/attempted=10/
+  estimated 1→0；skip 消息数；CLI 进入抽取列；Web 字段/汇总。
+
+### 13.19 C-11 最后一条 fail 修复：Web summary 合并展示（AC-20-8）
+
+- extract.js `summaryMergeLine(run)`：`summary_merge` 非空 ⇒
+  `summary 合并：before → after（自动合并 N，提示 M 组）`（`before===after` 也显示；
+  与 CLI 文案一致）；旧 run `summary_merge=null` ⇒ 不显示，绝不出现 `null → null`。
+- 测试（230→232）：静态断言 `summary_merge/summaryMergeLine`；node 执行真实渲染函数
+  （5→3 自动合并2 提示1组；null 不显示；0→0 显示）；API 新旧 run 字段行为；
+  C-10 页面加载零 run 请求回归保持。
+- 真实只读（~/.fasti）：run `01a1e4a1…` 的 summary_merge 为
+  `{before:0,after:0,auto_merged:0,suggestion_groups:[]}` ⇒ 渲染
+  「summary 合并：0 → 0（自动合并 0，提示 0 组）」。

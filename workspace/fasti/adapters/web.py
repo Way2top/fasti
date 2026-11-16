@@ -41,6 +41,12 @@ def http_status_for(code):
         return 404
     if code == "EXTRACT_CANDIDATE_NOT_FOUND":
         return 404
+    if code == "EXTRACT_RUN_NOT_FOUND":
+        return 404
+    if code == "VALIDATION_AMBIGUOUS_REFERENCE":
+        return 409
+    if code == "VALIDATION_INVALID_ID":
+        return 400
     if code == "EXTRACT_CANDIDATE_INVALID":
         return 400
     if code in ("EXTRACT_DISABLED", "EXTRACT_CONSENT_REQUIRED",

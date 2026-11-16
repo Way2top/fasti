@@ -66,7 +66,7 @@ fasti --help
 | 第三方包 | **无**。不 `pip install` 任何依赖；全程无网络调用 |
 | 文件锁 | `flock`（macOS/Linux）；NFS 等不支持 `flock` 的文件系统不保证（ADR-015） |
 
-依赖自检：`python3 -m unittest discover -s tests -v`（**219 个用例**：C-09 自动提取（会话解析/zstd/水位幂等/两段 LLM prompt/召回/决策矩阵/审核/隐私/迁移）+ C-08 防重复 + v3 时间语义/迁移 + UUIDv7/短前缀/格式门/持久化守卫 + 写路径原子性 + 前端字段契约 + 分层/确定性/导出导入/CLI/网页/静态资源守卫）。
+依赖自检：`python3 -m unittest discover -s tests -v`（**232 个用例**：C-09 自动提取（会话解析/zstd/水位幂等/两段 LLM prompt/召回/决策矩阵/审核/隐私/迁移）+ C-08 防重复 + v3 时间语义/迁移 + UUIDv7/短前缀/格式门/持久化守卫 + 写路径原子性 + 前端字段契约 + 分层/确定性/导出导入/CLI/网页/静态资源守卫）。
 
 ---
 
@@ -120,7 +120,7 @@ workspace/
 │       ├── static_files.py         # 同源静态资源白名单（4 条只读路由）
 │       ├── web.py                  # 本机网页表单后端（127.0.0.1 + 令牌 + Origin/Host 校验）
 │       └── web_static/             # index.html + style.css + app.js + extract.js（零外部请求）
-├── tests/                          # _base.py + 25 个 test_*.py + fixtures/*.json（219 个用例）
+├── tests/                          # _base.py + 25 个 test_*.py + fixtures/*.json（232 个用例）
 └── scripts/                        # 一次性迁移工具（stdlib、离线，不随产品命令暴露）
     ├── migrate_v2_to_v3.py         # v2→v3 事件改写器
     └── migrate_v3_to_v4.py         # v3→v4 纯加性迁移（--dry-run/原子/幂等）

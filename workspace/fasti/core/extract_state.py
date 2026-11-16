@@ -171,7 +171,7 @@ def load_candidates(data_dir):
             candidate_id = candidate.get("candidate_id")
             if candidate_id:
                 for key in ("granularity", "subject", "summary_subject_key",
-                            "prompt_version"):
+                            "prompt_version", "subject_aliases", "merge"):
                     candidate.setdefault(key, None)
                 folded[candidate_id] = candidate
     return folded
@@ -221,7 +221,7 @@ def new_candidate(candidate_id, session_id, message_ids, message_ordinals, chunk
                   recall, decision, evidence_key, relation=None, system=None,
                   suggested_category_key=None, target_fact_id=None, status="pending",
                   granularity=None, subject=None, summary_subject_key=None,
-                  prompt_version=None):
+                  prompt_version=None, subject_aliases=None, merge=None):
     now = _now()
     return {
         "candidate_id": candidate_id,
@@ -238,7 +238,9 @@ def new_candidate(candidate_id, session_id, message_ids, message_ordinals, chunk
         "granularity": granularity,
         "subject": subject,
         "summary_subject_key": summary_subject_key,
+        "subject_aliases": subject_aliases,
         "prompt_version": prompt_version,
+        "merge": merge,
         "suggested_category_key": suggested_category_key,
         "category_key": category_key,
         "change_type": change_type,
@@ -288,7 +290,55 @@ def load_runs(data_dir, limit=20):
                     runs.append(json.loads(line))
                 except ValueError:
                     continue
-    return runs[-max(1, min(int(limit or 20), 100)):][::-1]
+    marked = []
+    for run in runs:
+        if not isinstance(run, dict):
+            continue
+        if int(run.get("schema_version") or 1) < 3:
+            run["legacy"] = True
+            run.setdefault("coverage", None)
+            run.setdefault("summary_merge", None)
+            for session in run.get("sessions") or []:
+                session.setdefault("title", None)
+        else:
+            run.setdefault("legacy", False)
+        marked.append(run)
+    return marked[-max(1, min(int(limit or 20), 100)):][::-1]
+
+
+def all_runs(data_dir):
+    """全部运行记录（旧→新，不截断）；供 run_id 前缀解析。"""
+    path = _path(data_dir, RUNS_REL)
+    runs = []
+    if os.path.isfile(path):
+        with open(path, "r", encoding="utf-8") as handle:
+            for line in handle:
+                if line.strip():
+                    try:
+                        runs.append(json.loads(line))
+                    except ValueError:
+                        continue
+    return runs
+
+
+def find_run(data_dir, reference):
+    """完整 run_id 或唯一短前缀 → run；0/多/非法分别抛契约错误码。"""
+    import re
+    ref = (reference or "").strip()
+    if not ref or not re.fullmatch(r"[0-9a-fA-F-]{1,40}", ref):
+        raise errors.make("VALIDATION_INVALID_ID",
+                          "run_id 格式非法（需 UUIDv7 或十六进制短前缀）",
+                          details={"field": "run_id"})
+    matches = [run for run in all_runs(data_dir)
+               if str(run.get("run_id") or "").lower().startswith(ref.lower())]
+    if not matches:
+        raise errors.make("EXTRACT_RUN_NOT_FOUND",
+                          "提取运行不存在：%s" % ref, details={"run_id": ref})
+    if len(matches) > 1:
+        raise errors.make("VALIDATION_AMBIGUOUS_REFERENCE",
+                          "run_id 短前缀匹配到多条运行：%s" % ref,
+                          details={"run_id": ref, "matches": len(matches)})
+    return matches[0]
 
 
 def last_run(data_dir):

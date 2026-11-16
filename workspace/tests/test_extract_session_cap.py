@@ -110,6 +110,9 @@ class TestSessionBufferRuntime(ExtractRuntimeBase):
         self.assertEqual(record["candidates_after_dedup"], 7)
         self.assertEqual(record["candidates_kept"], 5)
         self.assertEqual(record["dropped_by_session_cap"], 2)
+        self.assertEqual(record["candidates"]["extracted"], 9)
+        self.assertEqual(record["candidates"]["kept"], 5)
+        self.assertEqual(record["candidates"]["dropped_by_session_cap"], 2)
         items = api.list_extract_candidates(self.data_dir, "pending")["items"]
         self.assertEqual(len(items), 5)
 

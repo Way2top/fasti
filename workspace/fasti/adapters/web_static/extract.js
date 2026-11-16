@@ -187,6 +187,94 @@
       });
   }
 
+  function summaryMergeLine(run) {
+    var merge = run && run.summary_merge;
+    if (!merge) { return null; }                    // 旧 run：不显示，避免 null → null
+    return "summary 合并：" + merge.before + " → " + merge.after +
+      "（自动合并 " + merge.auto_merged + "，提示 " +
+      ((merge.suggestion_groups || []).length) + " 组）";
+  }
+
+  function loadRuns() {
+    call("/api/extract/runs?limit=10").then(function (data) {
+      var box = document.getElementById("extract-runs");
+      box.innerHTML = "";
+      if (!data.items.length) {
+        box.textContent = "（暂无运行记录）";
+        return;
+      }
+      data.items.forEach(function (run) {
+        var row = document.createElement("div");
+        var head = document.createElement("button");
+        head.type = "button"; head.className = "secondary";
+        var coverage = run.coverage || {};
+        head.textContent = (run.started_at || "-") + " · " + run.status +
+          (run.legacy ? " · 旧记录信息不完整" : "") +
+          " · 会话 " + ((run.counters || {}).sessions_processed || 0) +
+          " / 进入抽取 " + ((run.counters || {}).sessions_entered_extraction || 0) +
+          " / 候选 " + ((run.counters || {}).candidates_created || 0) +
+          " / 未扫描 " + (coverage.unscanned_sessions !== undefined ?
+                          coverage.unscanned_sessions : "-");
+        head.addEventListener("click", function () {
+          call("/api/extract/runs/" + encodeURIComponent(run.run_id))
+            .then(function (detail) {
+              var item = detail.run;
+              var lines = ["运行 " + item.run_id,
+                           "状态：" + item.status +
+                             (item.legacy ? "（旧记录信息不完整）" : "")];
+              var coverage = item.coverage || {};
+              if (coverage.unscanned_sessions !== undefined &&
+                  coverage.unscanned_sessions !== null) {
+                lines.push("未扫描会话：" + coverage.unscanned_sessions +
+                           "；预计还需 " + coverage.estimated_runs_remaining + " 次");
+              }
+              var mergeLine = summaryMergeLine(item);
+              if (mergeLine) { lines.push(mergeLine); }
+              var skipped = 0;
+              (item.sessions || []).forEach(function (session) {
+                if (session.status === "no-new-messages") { skipped++; return; }
+                var title = session.title || {};
+                var counts = session.candidates || {};
+                var detail = "抽取 " + (counts.extracted !== undefined ? counts.extracted : "-") +
+                  " → 保留 " + (counts.kept !== undefined ? counts.kept : "-");
+                if (counts.dropped_by_session_cap) {
+                  detail += "；上限丢弃 " + counts.dropped_by_session_cap;
+                }
+                if (counts.dropped_duplicate_summary) {
+                  detail += "；重复 summary " + counts.dropped_duplicate_summary;
+                }
+                if (counts.duplicates) { detail += "；重复 " + counts.duplicates; }
+                lines.push((title.text || "不可用") + "（" +
+                           (title.source || "unavailable") + "）| " +
+                           (session.decision || "-") + " | " +
+                           (session.reason || "-") + " | 消息 " +
+                           (session.user_message_count !== undefined ?
+                            session.user_message_count : "-") + " | " + detail);
+              });
+              if (!(item.sessions || []).length) {
+                lines.push("本次运行没有处理任何会话");
+              } else if (skipped) {
+                lines.push("另有 " + skipped + " 个会话已处理过、本次无新消息");
+              }
+              window.alert(lines.join("\n"));
+            })
+            .catch(function (err) { msg(err.message || err.code, true); });
+        });
+        row.appendChild(head);
+        var link = document.createElement("button");
+        link.type = "button"; link.textContent = "查看本次候选";
+        link.addEventListener("click", function () {
+          call("/api/extract/candidates?status=all&run_id=" +
+               encodeURIComponent(run.run_id)).then(function (data) {
+            msg("本次候选 " + data.items.length + " 条（ID：run " + run.run_id + "）");
+          }).catch(function (err) { msg(err.message || err.code, true); });
+        });
+        row.appendChild(link);
+        box.appendChild(row);
+      });
+    }).catch(function (err) { text("extract-runs", err.message || err.code); });
+  }
+
   function refresh() {
     call("/api/extract/status").then(function (data) {
       renderStatus(data);
@@ -240,4 +328,5 @@
   });
 
   refresh();
+  loadRuns();
 })();
