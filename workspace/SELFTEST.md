@@ -87,8 +87,8 @@
 | ST-48 | AC-13-1~13-5（防呆） | `node --check fasti/adapters/web_static/app.js` + 断言 IIFE 首尾行 | 修复 R-F1 后 **exit 0**（修复前 `SyntaxError: Unexpected token '}'`，exit 1）；断言首行 `(function () {`、次行 `"use strict";`、倒数第二行 `})();` | ✅ |
 | ST-49 | 静态资源完整性（防呆） | 检查 `web_static/` 三文件存在/非空/单末尾 LF、`index.html` 仅同源引用、零外部 URL、与基线内联内容 sha256 一致 | 全部通过；`app.js` 内容 sha256 `0fb916a6…`、`style.css` 内容 sha256 `d6e0c406…` 与 `git show refactor-baseline:…/index.html` 的内联内容**逐字节相同** | ✅ |
 
-**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **232 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
-自动化测试：`Ran 232 tests … OK`（见 §4.1 与 §13）。
+**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **244 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
+自动化测试：`Ran 244 tests … OK`（见 §4.1 与 §13）。
 > 注：下表 ST-01~ST-47 中出现的 `fact-0001` / `line-0001` / `cat-0002` 为 **v1（序号方案）历史记录**；C-06 迁移后同一行为以 UUIDv7 + 短前缀复现，见 §9。
 
 ---
@@ -99,9 +99,9 @@
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests -v
-…（232 个用例，全 ok）
+…（244 个用例，全 ok）
 ----------------------------------------------------------------------
-Ran 232 tests in 7.524s
+Ran 244 tests in 8.366s
 
 OK
 ```
@@ -308,7 +308,7 @@ python3 -V                     # 期望 3.9+（实测 3.13.3）
 python3 -c "import sqlite3; print(sqlite3.sqlite_version)"   # 期望 >= 3.38（需 JSON1）
 ```
 
-### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，232 用例）
+### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，244 用例）
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -1481,7 +1481,7 @@ README 与 manifest 版本一致: True
 
 ```
 $ python3 -m unittest discover -s tests
-Ran 232 tests in 7.524s
+Ran 244 tests in 8.366s
 OK
 $ python3 run.py --data-dir <tmp> extract status     # 关闭/同意/配置/待审/水位
 $ python3 run.py --data-dir <tmp> extract config --base-url ... --model ...
@@ -1912,3 +1912,92 @@ $ python3 run.py --data-dir /tmp/fasti-realtest extract
 - 真实只读（~/.fasti）：run `01a1e4a1…` 的 summary_merge 为
   `{before:0,after:0,auto_merged:0,suggestion_groups:[]}` ⇒ 渲染
   「summary 合并：0 → 0（自动合并 0，提示 0 组）」。
+
+### 13.20 可靠性修复：JSON/截断重试 + 单会话失败隔离
+
+- **重试策略**：`complete_json(validator)` 对 `EXTRACT_LLM_INVALID_RESPONSE` 最多重试 2 次
+  （追加「只输出合法 JSON」纠正提示）；`EXTRACT_LLM_TRUNCATED` 重试 1 次；仍失败抛原错误。
+  分流/抽取/判定统一使用；网络/HTTP 重试仍在 `chat_completion` 内部处理。
+- **隔离**：单会话抽取/判定失败 ⇒ `sessions[]` 写 `status=failed` + `error_code`，该会话
+  水位不推进，继续其他会话；成功会话候选照常入队/水位推进；run 状态
+  `ok/partial/failed`；ZSTD 环境级错误仍整次失败。
+- **实测（必失败 mock，两个会话）**：
+  ```
+  status = partial | 坏会话抽取调用 3 次（初始+2 重试）
+  s1 | failed | EXTRACT_LLM_INVALID_RESPONSE | 消息 1
+  s2 | processed | None | 消息 1
+  候选数 = 1；水位 = ['s2']（坏会话无水位）
+  ```
+- **可观测**：CLI/Web 详情显示「失败 N 个会话（抽取响应非法，下次重试）」。
+- **费用**：正常路径不增加调用；仅错误时最多 +2（非法 JSON）/+1（截断）次。
+- **测试（232→237）**：重试一次成功（非法 JSON/截断）；连续失败隔离 partial；
+  全部失败 failed；重试次数上限；分流失败重试；CLI 失败汇总。
+
+### 13.21 ADR-038 对齐：全局 fatal vs 单会话隔离
+
+| 错误码 | 层级 | 处理 |
+|---|---|---|
+| `EXTRACT_ZSTD_UNAVAILABLE` | 全局 | **fatal**，run=failed，停止后续会话 |
+| `EXTRACT_LLM_UNREACHABLE` | 抽取/判定 | **fatal**（客户端重试耗尽） |
+| `EXTRACT_LLM_TIMEOUT` | 抽取/判定 | **fatal** |
+| `EXTRACT_LLM_HTTP_ERROR` | 抽取/判定 | **fatal** |
+| `EXTRACT_LLM_INVALID_RESPONSE` | 抽取/判定 | 单会话隔离（重试后仍失败），run=partial |
+| `EXTRACT_LLM_TRUNCATED` | 抽取/判定 | 单会话隔离（重试后仍失败） |
+| `EXTRACT_SESSION_UNREADABLE/TRUNCATED` | 单会话 | 隔离、不推进水位 |
+| 任意分流层错误 | 层 0 | **例外：始终单会话隔离**（保守 skip、不推进、继续） |
+
+- 常量：`constants.EXTRACT_GLOBAL_FATAL_CODES`；抽取/判定 except 中命中 ⇒ 记录失败会话后
+  `break` 并抛错；配置/存储/格式错误在运行前检查处保持 fatal。
+- 测试（237→241）：UNREACHABLE/TIMEOUT/HTTP_ERROR ⇒ run=failed、第二会话未调用 LLM、
+  水位为空；INVALID_RESPONSE 连续失败仍 partial；分流层 UNREACHABLE 仍 partial（坏会话
+  divert_failed、好会话 processed+候选）；失败会话不推进、成功会话保留。
+
+### 13.22 ADR-038 复核 4 条（fatal 状态/观测/重试计数/逐会话错误）
+
+- **AC-18-5**：全局 fatal（ZSTD/UNREACHABLE/TIMEOUT/HTTP_ERROR）⇒ run=**failed**，
+  即使此前有成功会话；成功会话候选/水位保留；`partial` 仅用于无全局 fatal 的单会话隔离失败。
+- **AC-18-12**：`counters.sessions_failed`；`sessions[].watermark_advanced`
+  （失败 false、成功/正常 skip true、no-new false）；失败项 `error_code`（含 unreadable）。
+- **AC-18-14**：`extract_llm.retry_stats`；run 写 `counters.retry_calls` 与
+  `llm.retry_reasons{invalid_response,truncated}`。
+- **AC-18-13**：`constants.EXTRACT_ERROR_LABELS`；CLI/Web 逐会话
+  「错误 CODE（中文说明）」；汇总 N == 逐会话失败数（含 unreadable）；Web 增加
+  `ERROR_LABELS/errorLabel`，不再固定「抽取响应非法」。
+- **实测 fatal-after-success**：
+  ```
+  raised EXTRACT_LLM_HTTP_ERROR
+  run.status=failed | sessions_failed=1 | retry_calls=0
+  sessions=[(s1,processed,None,True),(s2,failed,EXTRACT_LLM_HTTP_ERROR,False)]
+  pending=1；watermarks=['s1']
+  ```
+- **CLI 两错误码展示**：
+  ```
+  - 会话A（provider）| extract | … | 错误 EXTRACT_LLM_TIMEOUT（LLM 调用超时）
+  - 会话B（provider）| extract | … | 错误 EXTRACT_LLM_INVALID_RESPONSE（抽取响应非法 JSON）
+  失败 2 个会话（抽取响应非法 JSON、LLM 调用超时，下次重试）
+  ```
+- **测试（241→243）**：fatal-after-success（failed/成功保留/后续不处理）、
+  sessions_failed/watermark_advanced、retry_calls/retry_reasons、CLI 两错误码逐条+汇总；
+  INVALID_RESPONSE 连续失败仍 partial。
+
+### 13.23 契约 2.4.0：sessions_failed 口径收紧
+
+- **契约**：`counters.sessions_failed` = `sessions[]` 中 `status=failed` 的数量，
+  **不含** `divert_failed`/`unreadable`。
+- 实现：仅在 `status=failed` 时 +1；`sessions[].error_reason` 按
+  `constants.EXTRACT_ERROR_LABELS` 写入（failed/divert_failed/unreadable 均有
+  `error_code + error_reason`）；CLI/Web 汇总 N 取 `counters.sessions_failed`，
+  `divert_failed`/`unreadable` 仅在逐会话行展示。
+- **混合状态实测**：
+  ```
+  status=failed | sessions_failed=1
+  s1 failed(EXTRACT_LLM_INVALID_RESPONSE, 抽取响应非法 JSON, wm=false)
+  s2 divert_failed(EXTRACT_LLM_INVALID_RESPONSE, 抽取响应非法 JSON, wm=false)
+  unreadable-file unreadable(EXTRACT_SESSION_UNREADABLE, 会话不可读, wm=false)
+  ```
+- **枚举/水位核对**：状态仅 `no-new-messages/diversion_skip/processed/failed/
+  divert_failed/unreadable`（无 `diversion_extract`）；`watermark_advanced` 仅
+  `processed/diversion_skip=true`，其余 false。
+- **测试（243→244）**：1 failed + 1 divert_failed + 1 unreadable ⇒ sessions_failed=1；
+  三者错误码/文案独立、wm=false；processed=true；CLI 汇总 N=1 且逐条展示不同错误码；
+  无 `diversion_extract` 断言。

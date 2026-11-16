@@ -94,23 +94,28 @@ def _base_url(cfg):
     return (cfg.get("llm", {}).get("base_url") or "").rstrip("/")
 
 
-_USAGE_TOTALS = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0,
-                 "reasoning_tokens": 0}
+_USAGE_TOTALS = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "reasoning_tokens": 0}
+_RETRY_STATS = {"total": 0, "reasons": {}}
 _LAST_USAGE = {}
-
 
 def reset_usage_totals():
     for key in _USAGE_TOTALS:
         _USAGE_TOTALS[key] = 0
 
-
 def usage_totals():
     return dict(_USAGE_TOTALS)
 
+def reset_retry_stats():
+    _RETRY_STATS["total"] = 0
+    _RETRY_STATS["reasons"] = {}
+
+
+def retry_stats():
+    return {"total": _RETRY_STATS["total"],
+            "reasons": dict(_RETRY_STATS["reasons"])}
 
 def last_usage():
     return dict(_LAST_USAGE)
-
 
 def _record_usage(envelope):
     usage = envelope.get("usage") if isinstance(envelope, dict) else None
@@ -188,6 +193,42 @@ def chat_completion(cfg, messages, max_tokens=800, disable_thinking=False):
                               "LLM 返回错误状态 %s" % status,
                               details={"status": status})
         return _extract_content(raw)
+
+
+JSON_RETRY_LIMIT = 2
+TRUNCATED_RETRY_LIMIT = 1
+JSON_CORRECTION = ("上次输出不是合法 JSON。请只输出一个合法 JSON 对象，"
+                   "不要解释或 Markdown 围栏。")
+
+
+def complete_json(cfg, messages, validator, max_tokens=800,
+                  disable_thinking=False):
+    """INVALID_RESPONSE 重试 2 次、TRUNCATED 1 次；追加纠正提示；仍失败抛原错误。"""
+    extra = []
+    invalid_attempts = truncated_attempts = 0
+    while True:
+        try:
+            content = chat_completion(
+                cfg, list(messages) + extra, max_tokens=max_tokens,
+                disable_thinking=disable_thinking)
+            return validator(content)
+        except errors.CoreError as exc:
+            if exc.code == "EXTRACT_LLM_INVALID_RESPONSE" \
+                    and invalid_attempts < JSON_RETRY_LIMIT:
+                invalid_attempts += 1
+                _RETRY_STATS["total"] += 1
+                _RETRY_STATS["reasons"]["invalid_response"] = (
+                    _RETRY_STATS["reasons"].get("invalid_response", 0) + 1)
+                extra = [{"role": "user", "content": JSON_CORRECTION}]
+                continue
+            if exc.code == "EXTRACT_LLM_TRUNCATED" \
+                    and truncated_attempts < TRUNCATED_RETRY_LIMIT:
+                truncated_attempts += 1
+                _RETRY_STATS["total"] += 1
+                _RETRY_STATS["reasons"]["truncated"] = (
+                    _RETRY_STATS["reasons"].get("truncated", 0) + 1)
+                continue
+            raise
 
 
 def _backoff(attempt, raw=None):

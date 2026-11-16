@@ -157,6 +157,7 @@ def diversion_record(session, divert_input, status, decision=None, reason=None,
     }
     if error_code:
         record["error_code"] = error_code
+        record["error_reason"] = constants.EXTRACT_ERROR_LABELS.get(error_code, "未知错误")
     return record
 
 
@@ -177,10 +178,10 @@ def extract_chunk(cfg, chunk, model, categories, sensitive, counters):
         constants.EXTRACT_EXTRACT_TOKENS_CAP,
         constants.EXTRACT_EXTRACT_TOKENS_BASE
         + constants.EXTRACT_EXTRACT_TOKENS_PER_MESSAGE * len(chunk["messages"]))
-    content = extract_llm.chat_completion(
-        cfg, messages, max_tokens=extract_tokens,
+    valid, dropped = extract_llm.complete_json(
+        cfg, messages, extract_llm.validate_extraction_result,
+        max_tokens=extract_tokens,
         disable_thinking=constants.EXTRACT_EXTRACT_DISABLE_THINKING)
-    valid, dropped = extract_llm.validate_extraction_result(content)
     for reason, count in dropped.items():
         counters["dropped_invalid"] = counters.get("dropped_invalid", 0) + count
         counters["drop_reasons"] = counters.get("drop_reasons") or {}
@@ -268,3 +269,16 @@ def prepare_kept(kept, session_id, candidates_before, dedupe, counters):
         prepared.append({**item, "candidate_id": candidate_id,
                          "evidence_key": evidence_key, "session_id": session_id})
     return prepared
+
+
+def compute_run_status(sessions, fatal_error, counters):
+    """ADR-038：全局 fatal ⇒ failed；仅隔离失败 ⇒ partial；否则 ok。"""
+    failures = {"failed", "divert_failed", "unreadable"}
+    has_failure = any(session.get("status") in failures for session in sessions)
+    has_success = any(session.get("status") in ("processed", "diversion_skip")
+                      for session in sessions)
+    if fatal_error is not None:
+        return "failed"
+    if has_failure:
+        return "partial" if (has_success or counters["candidates_created"]) else "failed"
+    return "ok"

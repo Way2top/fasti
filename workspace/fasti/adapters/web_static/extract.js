@@ -187,6 +187,23 @@
       });
   }
 
+  var ERROR_LABELS = {
+    EXTRACT_LLM_UNREACHABLE: "无法连接 LLM 服务",
+    EXTRACT_LLM_TIMEOUT: "LLM 调用超时",
+    EXTRACT_LLM_HTTP_ERROR: "LLM 服务返回错误",
+    EXTRACT_LLM_INVALID_RESPONSE: "抽取响应非法 JSON",
+    EXTRACT_LLM_TRUNCATED: "响应被截断",
+    EXTRACT_LLM_CONFIG_MISSING: "LLM 配置缺失",
+    EXTRACT_LLM_CONFIG_INVALID: "LLM 配置非法",
+    EXTRACT_SESSION_UNREADABLE: "会话不可读",
+    EXTRACT_SESSION_TRUNCATED: "会话被截断",
+    EXTRACT_ZSTD_UNAVAILABLE: "缺少 zstd 解压能力"
+  };
+
+  function errorLabel(code) {
+    return ERROR_LABELS[code] || "未知错误";
+  }
+
   function summaryMergeLine(run) {
     var merge = run && run.summary_merge;
     if (!merge) { return null; }                    // 旧 run：不显示，避免 null → null
@@ -244,6 +261,11 @@
                   detail += "；重复 summary " + counts.dropped_duplicate_summary;
                 }
                 if (counts.duplicates) { detail += "；重复 " + counts.duplicates; }
+                var errorCode = session.error_code || session.code;
+                if (errorCode) {
+                  detail += " | 错误 " + errorCode + "（" +
+                    (session.error_reason || errorLabel(errorCode)) + "）";
+                }
                 lines.push((title.text || "不可用") + "（" +
                            (title.source || "unavailable") + "）| " +
                            (session.decision || "-") + " | " +
@@ -251,10 +273,27 @@
                            (session.user_message_count !== undefined ?
                             session.user_message_count : "-") + " | " + detail);
               });
+              var failed = (item.sessions || []).filter(function (session) {
+                return session.status === "failed";   // 契约：仅 status=failed
+              });
               if (!(item.sessions || []).length) {
                 lines.push("本次运行没有处理任何会话");
-              } else if (skipped) {
-                lines.push("另有 " + skipped + " 个会话已处理过、本次无新消息");
+              } else {
+                var failedCount = ((item.counters || {}).sessions_failed ||
+                                   failed.length);
+                if (failedCount) {
+                  var failedLabels = [];
+                  failed.forEach(function (session) {
+                    var label = session.error_reason ||
+                      errorLabel(session.error_code || session.code);
+                    if (failedLabels.indexOf(label) < 0) { failedLabels.push(label); }
+                  });
+                  lines.push("失败 " + failedCount + " 个会话（" +
+                             failedLabels.join("、") + "，下次重试）");
+                }
+                if (skipped) {
+                  lines.push("另有 " + skipped + " 个会话已处理过、本次无新消息");
+                }
               }
               window.alert(lines.join("\n"));
             })

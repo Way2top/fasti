@@ -297,9 +297,9 @@ class TestExtractRuntime(ExtractRuntimeBase):
                     "message": {"content": '{"judgments":[{"candidate_id":"cand-'}}]})
                 return 200, truncated.encode("utf-8")
         extract_llm.set_transport(TruncatingTransport())
-        with self.assertRaises(errors.CoreError) as ctx:
-            api.extract_run(self.data_dir, trigger="manual")
-        self.assertEqual(ctx.exception.code, "EXTRACT_LLM_TRUNCATED")
+        run = api.extract_run(self.data_dir, trigger="manual")
+        self.assertEqual(run["status"], "failed")
+        self.assertEqual(run["sessions"][0]["error_code"], "EXTRACT_LLM_TRUNCATED")
         marks, _rebuilt = extract_state.load_watermarks(self.data_dir)
         self.assertEqual(marks["sessions"], {})
         self.assertEqual(api.list_extract_candidates(self.data_dir, "all")["items"], [])
@@ -368,9 +368,10 @@ class TestExtractRuntime(ExtractRuntimeBase):
                                                       "reason": "含个人信息"}))
                 return 200, _envelope("{not json")
         extract_llm.set_transport(BadTransport())
-        with self.assertRaises(errors.CoreError) as ctx:
-            api.extract_run(self.data_dir, trigger="manual")
-        self.assertEqual(ctx.exception.code, "EXTRACT_LLM_INVALID_RESPONSE")
+        run = api.extract_run(self.data_dir, trigger="manual")
+        self.assertEqual(run["status"], "failed")
+        self.assertEqual(run["sessions"][0]["error_code"],
+                         "EXTRACT_LLM_INVALID_RESPONSE")
         marks, _rebuilt = extract_state.load_watermarks(self.data_dir)
         self.assertEqual(marks["sessions"], {})
         runs = api.list_extract_runs(self.data_dir)["items"]
