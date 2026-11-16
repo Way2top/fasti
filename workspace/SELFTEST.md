@@ -87,8 +87,8 @@
 | ST-48 | AC-13-1~13-5（防呆） | `node --check fasti/adapters/web_static/app.js` + 断言 IIFE 首尾行 | 修复 R-F1 后 **exit 0**（修复前 `SyntaxError: Unexpected token '}'`，exit 1）；断言首行 `(function () {`、次行 `"use strict";`、倒数第二行 `})();` | ✅ |
 | ST-49 | 静态资源完整性（防呆） | 检查 `web_static/` 三文件存在/非空/单末尾 LF、`index.html` 仅同源引用、零外部 URL、与基线内联内容 sha256 一致 | 全部通过；`app.js` 内容 sha256 `0fb916a6…`、`style.css` 内容 sha256 `d6e0c406…` 与 `git show refactor-baseline:…/index.html` 的内联内容**逐字节相同** | ✅ |
 
-**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **232 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
-自动化测试：`Ran 232 tests … OK`（见 §4.1 与 §13）。
+**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **237 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
+自动化测试：`Ran 237 tests … OK`（见 §4.1 与 §13）。
 > 注：下表 ST-01~ST-47 中出现的 `fact-0001` / `line-0001` / `cat-0002` 为 **v1（序号方案）历史记录**；C-06 迁移后同一行为以 UUIDv7 + 短前缀复现，见 §9。
 
 ---
@@ -99,9 +99,9 @@
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests -v
-…（232 个用例，全 ok）
+…（237 个用例，全 ok）
 ----------------------------------------------------------------------
-Ran 232 tests in 7.524s
+Ran 237 tests in 7.929s
 
 OK
 ```
@@ -308,7 +308,7 @@ python3 -V                     # 期望 3.9+（实测 3.13.3）
 python3 -c "import sqlite3; print(sqlite3.sqlite_version)"   # 期望 >= 3.38（需 JSON1）
 ```
 
-### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，232 用例）
+### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，237 用例）
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -1481,7 +1481,7 @@ README 与 manifest 版本一致: True
 
 ```
 $ python3 -m unittest discover -s tests
-Ran 232 tests in 7.524s
+Ran 237 tests in 7.929s
 OK
 $ python3 run.py --data-dir <tmp> extract status     # 关闭/同意/配置/待审/水位
 $ python3 run.py --data-dir <tmp> extract config --base-url ... --model ...
@@ -1912,3 +1912,23 @@ $ python3 run.py --data-dir /tmp/fasti-realtest extract
 - 真实只读（~/.fasti）：run `01a1e4a1…` 的 summary_merge 为
   `{before:0,after:0,auto_merged:0,suggestion_groups:[]}` ⇒ 渲染
   「summary 合并：0 → 0（自动合并 0，提示 0 组）」。
+
+### 13.20 可靠性修复：JSON/截断重试 + 单会话失败隔离
+
+- **重试策略**：`complete_json(validator)` 对 `EXTRACT_LLM_INVALID_RESPONSE` 最多重试 2 次
+  （追加「只输出合法 JSON」纠正提示）；`EXTRACT_LLM_TRUNCATED` 重试 1 次；仍失败抛原错误。
+  分流/抽取/判定统一使用；网络/HTTP 重试仍在 `chat_completion` 内部处理。
+- **隔离**：单会话抽取/判定失败 ⇒ `sessions[]` 写 `status=failed` + `error_code`，该会话
+  水位不推进，继续其他会话；成功会话候选照常入队/水位推进；run 状态
+  `ok/partial/failed`；ZSTD 环境级错误仍整次失败。
+- **实测（必失败 mock，两个会话）**：
+  ```
+  status = partial | 坏会话抽取调用 3 次（初始+2 重试）
+  s1 | failed | EXTRACT_LLM_INVALID_RESPONSE | 消息 1
+  s2 | processed | None | 消息 1
+  候选数 = 1；水位 = ['s2']（坏会话无水位）
+  ```
+- **可观测**：CLI/Web 详情显示「失败 N 个会话（抽取响应非法，下次重试）」。
+- **费用**：正常路径不增加调用；仅错误时最多 +2（非法 JSON）/+1（截断）次。
+- **测试（232→237）**：重试一次成功（非法 JSON/截断）；连续失败隔离 partial；
+  全部失败 failed；重试次数上限；分流失败重试；CLI 失败汇总。
