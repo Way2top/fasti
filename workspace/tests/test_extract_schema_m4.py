@@ -151,7 +151,7 @@ class TestStateSchema2(ExtractRuntimeBase):
             {"candidate_id": candidate_id, "relation": "new",
              "target_fact_id": None, "relation_confidence": 0.9,
              "rationale": "x"}]})
-        self.assertEqual(run["schema_version"], 2)
+        self.assertEqual(run["schema_version"], 3)
         self.assertIn("prompts", run["llm"])
         self.assertEqual(run["llm"]["prompts"]["divert"], "c10-divert-v2")
         self.assertEqual(run["llm"]["prompts"]["extraction"], "c10-extract-v2")

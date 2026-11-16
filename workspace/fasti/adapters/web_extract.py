@@ -13,14 +13,22 @@ def dispatch_get(handler, parts, query):
         return True
     if parts == ["api", "extract", "candidates"]:
         status = _query_one(query, "status") or "pending"
-        handler._ok(api.list_extract_candidates(data_dir, status))
+        handler._ok(api.list_extract_candidates(
+            data_dir, status, run_id=_query_one(query, "run_id")))
         return True
     if len(parts) == 4 and parts[:3] == ["api", "extract", "candidates"]:
         handler._ok(api.show_extract_candidate(data_dir, parts[3]))
         return True
     if parts == ["api", "extract", "runs"]:
-        limit = _query_one(query, "limit") or "20"
-        handler._ok(api.list_extract_runs(data_dir, int(limit)))
+        try:
+            limit = int(_query_one(query, "limit") or "10")
+        except ValueError:
+            raise errors.make("USAGE_INVALID_ARGUMENT", "limit 必须是整数",
+                              details={"field": "limit"})
+        handler._ok(api.list_extract_runs(data_dir, max(1, min(limit, 100))))
+        return True
+    if len(parts) == 4 and parts[:3] == ["api", "extract", "runs"]:
+        handler._ok(api.get_extract_run(data_dir, parts[3]))
         return True
     return False
 

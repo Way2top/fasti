@@ -7,7 +7,9 @@ from .. import clock
 from .. import constants
 from .. import extract_llm
 from .. import extract_privacy
+from .. import extract_privacy
 from .. import extract_state
+from .. import extract_summary_merge
 from .. import session_source
 
 
@@ -111,11 +113,33 @@ def advance_watermark(data_dir, watermarks, session, path, new_messages, run_id)
     extract_state.save_watermarks(data_dir, watermarks)
 
 
+def title_record(divert_input):
+    """→ {text(打码),source(provider|first_user_message_fallback|unavailable),truncated}。"""
+    text = (divert_input or {}).get("title")
+    if text:
+        redacted, kinds = extract_privacy.redact_text(text)
+        if kinds:
+            redacted = "[REDACTED]"
+        return {"text": redacted, "source": "provider",
+                "truncated": bool(divert_input.get("title_truncated"))}
+    first = (divert_input or {}).get("first_user_message") or ""
+    if first:
+        redacted, kinds = extract_privacy.redact_text(first)
+        if kinds:
+            return {"text": "[REDACTED]", "source": "first_user_message_fallback",
+                    "truncated": False}
+        truncated = len(redacted) > 120
+        return {"text": redacted[:120] + ("…[TRUNCATED]" if truncated else ""),
+                "source": "first_user_message_fallback", "truncated": truncated}
+    return {"text": None, "source": "unavailable", "truncated": False}
+
+
 def diversion_record(session, divert_input, status, decision=None, reason=None,
                      error_code=None):
     """逐会话分流记录（运行记录 sessions[]；不含原文）。"""
     record = {
         "session_id": session["session_id"],
+        "title": title_record(divert_input),
         "status": status,
         "decision": decision,
         "reason": reason,
@@ -201,24 +225,14 @@ def extract_chunk(cfg, chunk, model, categories, sensitive, counters):
     return buffer
 
 
-def postprocess_session(buffer, cap=None):
-    """summary 去重 → 确定性排序 → 截断 cap（默认 5；summary+atomic 都计入）。"""
+def postprocess_session(buffer, cap=None, project_aliases=None):
+    """C-11：summary 同项目合并（canonical/alias/相似）→ 排序 → 截断 cap。"""
     cap = cap or constants.EXTRACT_SESSION_CANDIDATE_CAP
-    grouped, atomic = {}, []
-    for item in buffer:
-        if item["granularity"] == "summary" and item.get("summary_subject_key"):
-            grouped.setdefault(item["summary_subject_key"], []).append(item)
-        else:
-            atomic.append(item)
-    kept_summaries = []
-    dropped_duplicate = 0
-    for key in sorted(grouped):
-        items = sorted(grouped[key], key=lambda item: (
-            -item["extraction_confidence"], min(item["message_ordinals"]),
-            item["content"], item["chunk_id"]))
-        kept_summaries.append(items[0])
-        dropped_duplicate += len(items) - 1
-    merged = kept_summaries + atomic
+    summaries = [item for item in buffer if item["granularity"] == "summary"]
+    atomic = [item for item in buffer if item["granularity"] != "summary"]
+    merged_summaries, merge_stats = extract_summary_merge.merge_summaries(
+        summaries, project_aliases=project_aliases)
+    merged = merged_summaries + atomic
     merged.sort(key=lambda item: (
         0 if item["granularity"] == "summary" else 1,
         -item["extraction_confidence"], item["content"],
@@ -227,8 +241,10 @@ def postprocess_session(buffer, cap=None):
     stats = {"candidates_extracted": len(buffer),
              "candidates_after_dedup": len(merged),
              "candidates_kept": len(kept),
-             "dropped_duplicate_summary": dropped_duplicate,
-             "dropped_by_session_cap": len(merged) - len(kept)}
+             "dropped_duplicate_summary": merge_stats["auto_merged"],
+             "dropped_by_session_cap": len(merged) - len(kept),
+             "merged_summaries": merge_stats["auto_merged"],
+             "summary_merge": merge_stats}
     return kept, stats
 
 

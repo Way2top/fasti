@@ -52,7 +52,7 @@ from .services.extract import (
     get_extract_config,
     get_extract_status,
     list_extract_candidates,
-    list_extract_runs,
+    get_extract_run, list_extract_runs,
     resolve_extract_candidate,
     set_extract_config,
     set_extract_consent,

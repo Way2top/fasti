@@ -21,7 +21,7 @@ class TestNoAutoTrigger(BaseStoreTest):
         for forbidden in ("auto_trigger", "maybeAutoTrigger", "last-trigger",
                           "web_open", "localStorage"):
             self.assertNotIn(forbidden, script)
-        self.assertEqual(script.count("/api/extract/run"), 1)   # 仅按钮点击处
+        self.assertEqual(script.count('"/api/extract/run"'), 1)   # 仅按钮点击处
         self.assertIn('trigger: "manual"', script)
         with open(os.path.join(root, "fasti", "adapters", "web_static", "index.html"),
                   encoding="utf-8") as handle:

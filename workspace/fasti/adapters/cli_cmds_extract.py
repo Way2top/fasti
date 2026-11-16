@@ -106,7 +106,9 @@ def _cmd_extract_consent(args, data_dir):
 
 
 def _cmd_extract_queue(args, data_dir):
-    result = api.list_extract_candidates(data_dir, getattr(args, "status", "pending"))
+    result = api.list_extract_candidates(
+        data_dir, getattr(args, "status", "pending"),
+        run_id=getattr(args, "run_id", None))
     lines = ["候选 ID | 内容摘要 | 类别 | 建议类型 | extraction/relation | 系统相似 | "
              "召回模式 | 冲突标记"]
     for item in result["items"]:
@@ -231,17 +233,22 @@ def _cmd_extract_reject(args, data_dir):
 
 
 def _cmd_extract_runs(args, data_dir):
+    reference = getattr(args, "run_id", None)
+    if reference:
+        return _cmd_extract_run_detail(data_dir, reference)
     result = api.list_extract_runs(data_dir, getattr(args, "limit", 20))
-    lines = ["run_id | 开始 | 状态 | 会话/消息 | 候选/自动写/待审 | 召回模式/字节/截断 | 失败"]
+    lines = ["run_id | 开始 | 状态 | 会话/消息 | 候选/自动写/待审 | 未扫描/预计剩余 | 失败"]
     for run in result["items"]:
         counters = run.get("counters") or {}
         recall = run.get("recall") or {}
-        lines.append("%s | %s | %s | %s/%s | %s/%s/%s | %s/%s/%s | %s" % (
+        coverage = run.get("coverage") or {}
+        lines.append("%s | %s | %s%s | %s/%s | %s/%s/%s | %s/%s | %s" % (
             run.get("run_id"), run.get("started_at"), run.get("status"),
+            "（旧记录信息不完整）" if run.get("legacy") else "",
             counters.get("sessions_processed"), counters.get("messages_processed"),
             counters.get("candidates_created"), counters.get("auto_written"),
-            counters.get("queued"), recall.get("mode"), recall.get("corpus_bytes"),
-            "是" if recall.get("truncated") else "否", counters.get("errors")))
+            counters.get("queued"), coverage.get("unscanned_sessions", "-"),
+            coverage.get("estimated_runs_remaining", "-"), counters.get("errors")))
         drops = {key: value for key, value in (counters.get("drop_reasons") or {}).items()
                  if value}
         if drops:
@@ -251,4 +258,47 @@ def _cmd_extract_runs(args, data_dir):
         lines.append("（无）")
     lines.append("说明：运行记录不含会话原文/密钥")
     _emit("extract.runs", result, "\n".join(lines))
+    return 0
+
+
+def _cmd_extract_run_detail(data_dir, reference):
+    result = api.get_extract_run(data_dir, reference)
+    run = result["run"]
+    lines = ["运行：%s" % run.get("run_id"),
+             "开始/结束：%s / %s" % (run.get("started_at"), run.get("finished_at")),
+             "状态：%s%s" % (run.get("status"),
+                            "（旧记录信息不完整）" if run.get("legacy") else "")]
+    coverage = run.get("coverage") or {}
+    if coverage:
+        lines.append("覆盖：候选会话 %s，已扫描/本次 %s/%s，未扫描 %s，预计还需 %s 次"
+                     % (coverage.get("total_candidate_sessions"),
+                        coverage.get("sessions_scanned_this_run"),
+                        coverage.get("sessions_scanned_this_run"),
+                        coverage.get("unscanned_sessions"),
+                        coverage.get("estimated_runs_remaining")))
+    merge = run.get("summary_merge") or {}
+    if merge:
+        lines.append("summary 合并：%s → %s（自动合并 %s，提示 %s 组）"
+                     % (merge.get("before"), merge.get("after"),
+                        merge.get("auto_merged"), len(merge.get("suggestion_groups") or [])))
+    sessions = run.get("sessions") or []
+    if not sessions:
+        lines.append("本次运行没有处理任何会话")
+    else:
+        lines.append("逐会话：")
+        for session in sessions:
+            title = session.get("title") or {}
+            text = title.get("text") or "不可用"
+            source = title.get("source") or "unavailable"
+            lines.append("  - %s（%s）| %s | %s | 消息 %s | 候选 %s"
+                         % (text, source, session.get("decision") or "-",
+                            (session.get("reason") or "-")[:60],
+                            session.get("user_message_count",
+                                       session.get("messages", "-")),
+                            (session.get("candidates") or {}).get("created", "-")))
+    counts = (result.get("candidates") or {}).get("counts_by_status") or {}
+    lines.append("候选：待审 %s / 通过 %s / 拒绝 %s"
+                 % (counts.get("pending", 0), counts.get("approved", 0),
+                    counts.get("rejected", 0)))
+    _emit("extract.runs.detail", result, "\n".join(lines))
     return 0

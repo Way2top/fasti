@@ -184,6 +184,7 @@ def build_parser():
     consent_cmd.add_argument("--reset", action="store_true")
 
     queue_cmd = extract_sub.add_parser("queue", parents=[g], help="待审核候选列表")
+    queue_cmd.add_argument("--run", dest="run_id")
     queue_cmd.add_argument("--status", default="pending",
                            choices=["pending", "approved", "rejected", "duplicate",
                                     "dropped", "all"])
@@ -206,6 +207,7 @@ def build_parser():
     reject_cmd.add_argument("--reason")
 
     runs_cmd = extract_sub.add_parser("runs", parents=[g], help="最近提取运行记录")
+    runs_cmd.add_argument("run_id", nargs="?", help="运行时详情（完整 UUIDv7/唯一短前缀）")
     runs_cmd.add_argument("--limit", type=int, default=20)
 
     return parser

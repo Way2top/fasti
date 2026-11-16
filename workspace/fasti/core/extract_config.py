@@ -99,6 +99,7 @@ def default_config():
             "auto_write_daily_limit": constants.EXTRACT_AUTO_WRITE_DAILY,
             "auto_write_per_run_limit": constants.EXTRACT_AUTO_WRITE_PER_RUN,
             "sensitive_filter": True,
+            "project_aliases": {},
             "sources": {"dsh_home": "~/.dsh", "allow_plain": False},
         },
     }
@@ -188,6 +189,12 @@ def _validate_config(cfg):
     consent = extract.get("consent") or {}
     if not isinstance(consent, dict):
         problems.append(("extract.consent", "应为对象"))
+    aliases = extract.get("project_aliases") or {}
+    if not isinstance(aliases, dict) or not all(
+            isinstance(key, str) and isinstance(value, list)
+            and all(isinstance(item, str) for item in value)
+            for key, value in aliases.items()):
+        problems.append(("extract.project_aliases", "应为 {canonical: [alias]} 对象"))
     sources = extract.get("sources") or {}
     if not isinstance(sources, dict):
         problems.append(("extract.sources", "应为对象"))

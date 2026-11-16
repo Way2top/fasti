@@ -14,6 +14,7 @@ from .. import constants
 from .. import errors
 from .. import extract_divert
 from .. import extract_config
+from .. import extract_coverage
 from .. import extract_llm
 from .. import extract_privacy
 from .. import extract_quality
@@ -74,10 +75,18 @@ def get_extract_status(data_dir):
     return status
 
 
-def list_extract_candidates(data_dir, status="pending"):
+def list_extract_candidates(data_dir, status="pending", run_id=None):
     data_dir = os.path.abspath(data_dir)
     store.require_initialized(data_dir)
-    return extract_state.list_candidates(data_dir, status or "pending")
+    result = extract_state.list_candidates(data_dir, status or "pending")
+    if run_id:
+        result["items"] = [item for item in result["items"]
+                          if item.get("run_id") == run_id]
+        result["counts"] = {key: sum(1 for item in result["items"]
+                                    if item.get("status") == key)
+                           for key in ("pending", "approved", "rejected",
+                                       "duplicate", "dropped")}
+    return result
 
 
 def show_extract_candidate(data_dir, candidate_id):
@@ -117,6 +126,26 @@ def list_extract_runs(data_dir, limit=20):
     return {"items": extract_state.load_runs(data_dir, limit)}
 
 
+def get_extract_run(data_dir, run_id):
+    """运行详情（含按状态候选计数）；run_id 支持完整 UUIDv7/唯一短前缀。"""
+    data_dir = os.path.abspath(data_dir)
+    store.require_initialized(data_dir)
+    run = extract_state.find_run(data_dir, run_id)
+    if int(run.get("schema_version") or 1) < 3:
+        run = dict(run)
+        run["legacy"] = True
+        run.setdefault("coverage", None)
+        run.setdefault("summary_merge", None)
+        for session in run.get("sessions") or []:
+            session.setdefault("title", None)
+    candidates = extract_state.load_candidates(data_dir)
+    owned = [item for item in candidates.values() if item.get("run_id") == run["run_id"]]
+    counts = {key: sum(1 for item in owned if item.get("status") == key)
+              for key in ("pending", "approved", "rejected", "duplicate", "dropped")}
+    return {"run": run, "candidates": {"counts_by_status": counts,
+                                       "total": len(owned)}}
+
+
 # ---------------------------------------------------------------- 运行
 def resolve_extract_candidate(data_dir, candidate_id, action, patch=None,
                               confirm_token=None):
@@ -152,6 +181,8 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
     recall_mode = None
     corpus_bytes = 0
     llm_calls = 0
+    merge_totals = {"before": 0, "after": 0, "auto_merged": 0,
+                    "groups": [], "suggestion_groups": []}
     auto_writes = 0
     daily_writes = _daily_auto_writes(data_dir)
     limit_messages = int(max_messages or extract_cfg.get("max_messages_per_run") or 200)
@@ -231,11 +262,19 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
                     buffer.extend(ops.extract_chunk(cfg, chunk, model, categories,
                                                     sensitive, counters))
                     llm_calls += 1
-                kept, stats = ops.postprocess_session(buffer)
+                kept, stats = ops.postprocess_session(
+                    buffer, project_aliases=(cfg["extract"].get("project_aliases")
+                                             or {}))
                 for key in ("candidates_extracted", "candidates_after_dedup",
                             "candidates_kept", "dropped_duplicate_summary",
                             "dropped_by_session_cap"):
                     counters[key] = counters.get(key, 0) + stats[key]
+                summary_stats = stats.get("summary_merge") or {}
+                for key in ("before", "after", "auto_merged"):
+                    merge_totals[key] += summary_stats.get(key, 0)
+                merge_totals["groups"].extend(summary_stats.get("groups") or [])
+                merge_totals["suggestion_groups"].extend(
+                    summary_stats.get("suggestion_groups") or [])
                 prepared = ops.prepare_kept(kept, session["session_id"],
                                             candidates_before, dedupe, counters)
                 created, chunk_recall = 0, None
@@ -272,6 +311,12 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
                 "dropped_duplicate_summary"]
             processed_record["dropped_by_session_cap"] = stats[
                 "dropped_by_session_cap"]
+            processed_record["candidates"] = {
+                "created": stats["candidates_kept"],
+                "auto_written": 0, "queued": 0,
+                "dropped_by_session_cap": stats["dropped_by_session_cap"],
+                "dropped_duplicate_summary": stats["dropped_duplicate_summary"],
+                "merged_summaries": stats.get("merged_summaries", 0)}
             sessions_summary.append(processed_record)
     recall_summary = {"mode": recall_mode or "full", "corpus_bytes": corpus_bytes,
                       "candidates": counters["candidates_created"],
@@ -302,8 +347,19 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
                 "usage": extract_llm.usage_totals()},
         "watermark_rebuilt": bool(rebuilt),
         "sessions": sessions_summary,
+        "summary_merge": merge_totals,
+        "legacy": False,
         "errors": run_errors,
     }
+    sources = extract_cfg.get("sources") or {}
+    coverage = extract_coverage.compute_coverage(
+        sources.get("dsh_home") or "~/.dsh",
+        bool(sources.get("allow_plain")), watermarks,
+        int(extract_cfg.get("max_sessions_per_run") or 10), session_cwd)
+    coverage["sessions_attempted"] = counters.get("divert_total", 0)
+    coverage["sessions_scanned_this_run"] = (
+        counters.get("sessions_processed", 0) + counters.get("divert_skip", 0))
+    run["coverage"] = coverage
     if not dry_run:
         extract_state.append_run(data_dir, run)
     if fatal_error is not None:
@@ -358,7 +414,9 @@ def _decide_session(data_dir, model, cfg, session_id, prepared, run_id, dry_run,
                       "unverified": relation.get("unverified", False)},
             system=system, target_fact_id=relation.get("target_fact_id"),
             granularity=item.get("granularity"), subject=item.get("subject"),
-            summary_subject_key=None, prompt_version=item.get("prompt_version"))
+            summary_subject_key=item.get("canonical_subject_key"),
+            subject_aliases=item.get("subject_aliases"), merge=item.get("merge"),
+            prompt_version=item.get("prompt_version"))
         counters["candidates_created"] += 1
         created += 1
         if decision["action"] == "auto_write" and not dry_run:
