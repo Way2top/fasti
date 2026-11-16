@@ -298,8 +298,9 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
                     "抽取/判定失败，下次重试", exc.code)
                 failed_record["messages"] = len(new_messages)
                 sessions_summary.append(failed_record)
-                if exc.code == "EXTRACT_ZSTD_UNAVAILABLE":
+                if exc.code in constants.EXTRACT_GLOBAL_FATAL_CODES:
                     fatal_error = exc
+                    break  # 全局 fatal：停止后续会话，整次 run=failed
                 continue  # 单会话失败隔离：不推进水位、继续其他会话
             if not dry_run:
                 advance_watermark(data_dir, watermarks, session, path,
