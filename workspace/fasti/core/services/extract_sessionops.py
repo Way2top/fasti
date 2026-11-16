@@ -177,10 +177,10 @@ def extract_chunk(cfg, chunk, model, categories, sensitive, counters):
         constants.EXTRACT_EXTRACT_TOKENS_CAP,
         constants.EXTRACT_EXTRACT_TOKENS_BASE
         + constants.EXTRACT_EXTRACT_TOKENS_PER_MESSAGE * len(chunk["messages"]))
-    content = extract_llm.chat_completion(
-        cfg, messages, max_tokens=extract_tokens,
+    valid, dropped = extract_llm.complete_json(
+        cfg, messages, extract_llm.validate_extraction_result,
+        max_tokens=extract_tokens,
         disable_thinking=constants.EXTRACT_EXTRACT_DISABLE_THINKING)
-    valid, dropped = extract_llm.validate_extraction_result(content)
     for reason, count in dropped.items():
         counters["dropped_invalid"] = counters.get("dropped_invalid", 0) + count
         counters["drop_reasons"] = counters.get("drop_reasons") or {}

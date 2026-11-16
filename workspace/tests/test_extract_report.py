@@ -306,6 +306,26 @@ class TestRunReport(BaseStoreTest):
             self.data_dir, "018bcfe5-a000-7a5a-9a5a-5a5a5a5a5a5a")["run"]
         self.assertIsNone(old.get("summary_merge"))
 
+    def test_cli_failed_session_summary(self):
+        extract_state.append_run(self.data_dir, {
+            "run_id": "018bcfe5-b000-7a5a-9a5a-5a5a5a5a5a5a", "schema_version": 3,
+            "status": "partial", "started_at": "2026-11-16T10:00:00+08:00",
+            "counters": {}, "coverage": {}, "summary_merge": {},
+            "sessions": [{"session_id": "s1",
+                          "title": {"text": "失败会话", "source": "provider"},
+                          "status": "failed", "decision": "extract",
+                          "reason": "抽取/判定失败，下次重试",
+                          "error_code": "EXTRACT_LLM_INVALID_RESPONSE",
+                          "user_message_count": 2}], "errors": []})
+        from fasti.adapters import cli_cmds_extract
+        from unittest import mock
+        import contextlib, io
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            cli_cmds_extract._cmd_extract_runs(
+                mock.Mock(run_id="018bcfe5-b000"), self.data_dir)
+        self.assertIn("失败 1 个会话（抽取响应非法，下次重试）", buffer.getvalue())
+
     def test_legacy_run(self):
         extract_state.append_run(self.data_dir, {
             "run_id": "018bcfe5-7000-7a5a-9a5a-5a5a5a5a5a5a", "status": "ok"})

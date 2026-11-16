@@ -218,9 +218,9 @@ class TestDivertRuntime(BaseStoreTest):
         self.assertEqual(len(api.list_extract_candidates(self.data_dir, "pending")["items"]), 1)
         marks, _ = extract_state.load_watermarks(self.data_dir)
         self.assertNotIn("bad-1", marks["sessions"])     # 失败不推进
-        self.assertEqual(state["bad_calls"], 1)
+        self.assertEqual(state["bad_calls"], 3)  # 初始 + 2 次重试
         second = api.extract_run(self.data_dir, trigger="manual")
-        self.assertEqual(state["bad_calls"], 2)          # 下轮重试
+        self.assertEqual(state["bad_calls"], 6)          # 下轮再初始 + 2 次重试
         self.assertEqual(second["counters"]["divert_failed"], 1)
 
     def test_project_progress_extract_vs_troubleshooting_skip(self):

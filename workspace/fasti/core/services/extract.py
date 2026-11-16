@@ -293,12 +293,14 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
             except errors.CoreError as exc:
                 counters["errors"] += 1
                 run_errors.append({"code": exc.code, "safe_detail": exc.message[:200]})
-                sessions_summary.append({"session_id": session["session_id"],
-                                         "status": "failed", "code": exc.code})
-                if exc.code.startswith("EXTRACT_LLM_") \
-                        or exc.code in ("EXTRACT_ZSTD_UNAVAILABLE",):
+                failed_record = diversion_record(
+                    session, divert_input, "failed", "extract",
+                    "抽取/判定失败，下次重试", exc.code)
+                failed_record["messages"] = len(new_messages)
+                sessions_summary.append(failed_record)
+                if exc.code == "EXTRACT_ZSTD_UNAVAILABLE":
                     fatal_error = exc
-                break
+                continue  # 单会话失败隔离：不推进水位、继续其他会话
             if not dry_run:
                 advance_watermark(data_dir, watermarks, session, path,
                                   new_messages, run_id)
@@ -325,9 +327,15 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
     recall_summary = {"mode": recall_mode or "full", "corpus_bytes": corpus_bytes,
                       "candidates": counters["candidates_created"],
                       "recalled": recalled_total, "truncated": any_truncated}
-    status = "ok"
-    if counters["errors"]:
-        status = "partial" if counters["candidates_created"] else "failed"
+    failed_statuses = {"failed", "divert_failed", "unreadable"}
+    has_failure = any((session.get("status") in failed_statuses)
+                      for session in sessions_summary)
+    has_success = any(session.get("status") in ("processed", "diversion_skip")
+                      for session in sessions_summary)
+    if has_failure:
+        status = "partial" if (has_success or counters["candidates_created"]) else "failed"
+    else:
+        status = "ok"
     finished_at = clock.now_recorded_at()
     run = {
         "run_id": run_id,
@@ -387,13 +395,14 @@ def _decide_session(data_dir, model, cfg, session_id, prepared, run_id, dry_run,
         constants.EXTRACT_JUDGE_TOKENS_CAP,
         constants.EXTRACT_JUDGE_TOKENS_BASE
         + constants.EXTRACT_JUDGE_TOKENS_PER_CANDIDATE * len(prepared))
-    judgments_content = extract_llm.chat_completion(
-        cfg, judge_payload, max_tokens=judge_tokens,
+    judgments = extract_llm.complete_json(
+        cfg, judge_payload,
+        lambda raw: extract_llm.validate_judgment_result(
+            raw, {item["candidate_id"] for item in prepared},
+            {item["candidate_id"]: per_candidate[item["candidate_id"]]["recalled_fact_ids"]
+             for item in prepared}),
+        max_tokens=judge_tokens,
         disable_thinking=constants.EXTRACT_JUDGE_DISABLE_THINKING)
-    judgments = extract_llm.validate_judgment_result(
-        judgments_content, {item["candidate_id"] for item in prepared},
-        {item["candidate_id"]: per_candidate[item["candidate_id"]]["recalled_fact_ids"]
-         for item in prepared})
     daily_writes = _daily_auto_writes(data_dir)
     created = 0
     for item in prepared:

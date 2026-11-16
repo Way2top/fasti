@@ -190,6 +190,41 @@ def chat_completion(cfg, messages, max_tokens=800, disable_thinking=False):
         return _extract_content(raw)
 
 
+JSON_RETRY_LIMIT = 2
+TRUNCATED_RETRY_LIMIT = 1
+JSON_CORRECTION = ("上次输出不是合法 JSON 或不符合约定结构。请只输出一个合法的 JSON 对象，"
+                   "不要包含解释文字或 Markdown 围栏。")
+
+
+def complete_json(cfg, messages, validator, max_tokens=800,
+                  disable_thinking=False):
+    """调用 LLM 并用 validator 解析；INVALID_RESPONSE 最多重试 2 次、TRUNCATED 1 次。
+
+    重试时在 user 消息后追加纠正提示（更可能让模型回到 JSON 输出）；仍失败则抛原错误。
+    网络/HTTP 错误的重试仍由 chat_completion 内部处理，不在此重复。
+    """
+    extra = []
+    invalid_attempts = 0
+    truncated_attempts = 0
+    while True:
+        try:
+            content = chat_completion(
+                cfg, list(messages) + extra, max_tokens=max_tokens,
+                disable_thinking=disable_thinking)
+            return validator(content)
+        except errors.CoreError as exc:
+            if exc.code == "EXTRACT_LLM_INVALID_RESPONSE" \
+                    and invalid_attempts < JSON_RETRY_LIMIT:
+                invalid_attempts += 1
+                extra = [{"role": "user", "content": JSON_CORRECTION}]
+                continue
+            if exc.code == "EXTRACT_LLM_TRUNCATED" \
+                    and truncated_attempts < TRUNCATED_RETRY_LIMIT:
+                truncated_attempts += 1
+                continue
+            raise
+
+
 def _backoff(attempt, raw=None):
     """退避 1s/2s；尊重 Retry-After≤30（测试会 patch time.sleep）。"""
     delay = 2 ** attempt

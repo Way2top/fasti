@@ -251,10 +251,20 @@
                            (session.user_message_count !== undefined ?
                             session.user_message_count : "-") + " | " + detail);
               });
+              var failed = (item.sessions || []).filter(function (session) {
+                return session.status === "failed" ||
+                       session.status === "divert_failed";
+              });
               if (!(item.sessions || []).length) {
                 lines.push("本次运行没有处理任何会话");
-              } else if (skipped) {
-                lines.push("另有 " + skipped + " 个会话已处理过、本次无新消息");
+              } else {
+                if (failed.length) {
+                  lines.push("失败 " + failed.length +
+                             " 个会话（抽取响应非法，下次重试）");
+                }
+                if (skipped) {
+                  lines.push("另有 " + skipped + " 个会话已处理过、本次无新消息");
+                }
               }
               window.alert(lines.join("\n"));
             })

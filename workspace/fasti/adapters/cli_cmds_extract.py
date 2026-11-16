@@ -319,6 +319,18 @@ def _cmd_extract_run_detail(data_dir, reference):
                             session.get("user_message_count",
                                        session.get("messages", "-")),
                             "；".join(detail)))
+    failed = [session for session in processed
+              if session.get("status") in ("failed", "divert_failed")]
+    if failed:
+        labels = {"EXTRACT_LLM_INVALID_RESPONSE": "抽取响应非法",
+                  "EXTRACT_LLM_TRUNCATED": "响应被截断",
+                  "EXTRACT_LLM_TIMEOUT": "调用超时",
+                  "EXTRACT_LLM_HTTP_ERROR": "服务错误",
+                  "EXTRACT_LLM_UNREACHABLE": "无法连接"}
+        codes = sorted({session.get("error_code") or session.get("code") or ""
+                        for session in failed})
+        labels_text = "、".join(labels.get(code, code or "未知错误") for code in codes)
+        lines.append("失败 %d 个会话（%s，下次重试）" % (len(failed), labels_text))
     if skipped:
         lines.append("另有 %d 个会话已处理过、本次无新消息" % len(skipped))
     counts = (result.get("candidates") or {}).get("counts_by_status") or {}

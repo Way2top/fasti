@@ -75,9 +75,9 @@ def validate_divert_result(raw):
 def divert_session(cfg, divert_input, sensitive_filter=True):
     """→ {decision, reason, prompt_version}；失败抛 EXTRACT_LLM_*。"""
     messages = build_divert_messages(divert_input, sensitive_filter=sensitive_filter)
-    content = extract_llm.chat_completion(
-        cfg, messages, max_tokens=constants.EXTRACT_DIVERT_MAX_TOKENS,
+    result = extract_llm.complete_json(
+        cfg, messages, validate_divert_result,
+        max_tokens=constants.EXTRACT_DIVERT_MAX_TOKENS,
         disable_thinking=constants.EXTRACT_DIVERT_DISABLE_THINKING)
-    result = validate_divert_result(content)
     result["prompt_version"] = constants.EXTRACT_PROMPT_DIVERT
     return result
