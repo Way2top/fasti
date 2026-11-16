@@ -26,6 +26,7 @@ def _write_session(dsh_home, texts):
     for index, text in enumerate(texts, start=1):
         events.append({"seq": index, "type": "user/message",
                        "data": {"id": "m%d" % index, "role": "user",
+                       "source": {"kind": "user"},
                                 "content": [{"type": "text", "text": text}]}})
     with open(path, "w", encoding="utf-8") as handle:
         for event in events:
@@ -108,6 +109,33 @@ class TestExtractCli(BaseStoreTest):
         self.assertIn("目标事实（update/conflict）", out)       # update 目标内容
         self.assertIn("来源：session=sess-cli message_ids=['m1']", out)
 
+    def test_cli_show_granularity_display(self):
+        old_id = "cand-" + "d" * 20
+        extract_state.append_candidate(self.data_dir, extract_state.new_candidate(
+            old_id, "sess-cli", ["m1"], [1], "chunk", "run-1", "旧候选", "tech",
+            "new", 0.9,
+            {"mode": "full", "corpus_bytes": 0, "current_count": 0,
+             "historical_count": 0, "recalled_fact_ids": [],
+             "historical_fact_ids": [], "reasons": {}, "truncated": False},
+            {"action": "review", "reason_code": "auto_write_disabled"},
+            extract_state.evidence_key_for("sess-cli", ["m1"], "旧候选")))
+        out = self._run("extract", "show", old_id).stdout
+        self.assertIn("粒度：未知", out)                        # 旧候选不报错
+
+        summary_id = "cand-" + "e" * 20
+        extract_state.append_candidate(self.data_dir, extract_state.new_candidate(
+            summary_id, "sess-cli", ["m1"], [1], "chunk", "run-1",
+            "正在做 Fasti 项目", "tech", "new", 0.9,
+            {"mode": "full", "corpus_bytes": 0, "current_count": 0,
+             "historical_count": 0, "recalled_fact_ids": [],
+             "historical_fact_ids": [], "reasons": {}, "truncated": False},
+            {"action": "review", "reason_code": "auto_write_disabled"},
+            extract_state.evidence_key_for("sess-cli", ["m1"], "正在做 Fasti 项目"),
+            granularity="summary", subject="Fasti",
+            prompt_version="c10-extract-v2"))
+        out = self._run("extract", "show", summary_id).stdout
+        self.assertIn("粒度：summary（subject=Fasti）", out)
+
     def test_cli_watermark_rebuilt_notice(self):
         import contextlib
         import io
@@ -132,14 +160,15 @@ class TestExtractCli(BaseStoreTest):
         with open(os.path.join(ROOT, "fasti", "adapters", "web_static", "extract.js"),
                   encoding="utf-8") as handle:
             script = handle.read()
-        self.assertIn("auto_trigger_on_open", script)          # AC-16-1
-        self.assertIn("web_open", script)
-        self.assertIn("fasti-extract-last-trigger", script)     # 节流持久化
+        self.assertNotIn("auto_trigger_on_open", script)       # AC-18-10
+        self.assertNotIn("web_open", script)
+        self.assertNotIn("fasti-extract-last-trigger", script)  # 无 localStorage 节流
         self.assertIn("recall_details", script)                 # AC-16-2/11
         self.assertIn("reasons", script)
         self.assertIn("message_ids", script)                    # AC-17-1 来源证据
         self.assertIn("冲突标记", script)
         self.assertIn("watermark_rebuilt", script)              # AC-16-9
+        self.assertIn("粒度", script)                           # AC-16-2
         self.assertIn("编辑后通过", script)                     # AC-17-5
         with open(os.path.join(ROOT, "fasti", "adapters", "web_static", "index.html"),
                   encoding="utf-8") as handle:
@@ -175,6 +204,9 @@ class TestExtractWeb(BaseStoreTest):
             def __call__(inner, url, headers, body, timeout):
                 payload = json.loads(body.decode("utf-8"))
                 system = payload["messages"][0]["content"]
+                if "分流" in system:
+                    return 200, _envelope({"decision": "extract",
+                                           "reason": "含个人信息"})
                 return 200, _envelope(self.extraction if "抽取" in system
                                       else self.judgments)
         extract_llm.set_transport(Mock())

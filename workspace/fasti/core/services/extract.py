@@ -12,6 +12,7 @@ import time
 from .. import clock
 from .. import constants
 from .. import errors
+from .. import extract_divert
 from .. import extract_config
 from .. import extract_llm
 from .. import extract_privacy
@@ -23,6 +24,11 @@ from .. import session_source
 from .. import store
 from . import extract_review
 from . import facts
+from . import extract_sessionops as ops
+from .extract_sessionops import (
+    _base_url_host, _daily_auto_writes, _dedupe_index, _empty_counters,
+    _entry_for_fact, _recall_entries_for,
+    advance_watermark, diversion_record)
 from .extract_review import _extraction_payload
 from ._shared import _load_model
 
@@ -112,84 +118,10 @@ def list_extract_runs(data_dir, limit=20):
 
 
 # ---------------------------------------------------------------- 运行
-def _empty_counters():
-    return {"sessions_seen": 0, "sessions_processed": 0, "sessions_skipped": 0,
-            "messages_processed": 0, "candidates_created": 0, "auto_written": 0,
-            "queued": 0, "duplicates": 0, "sensitive_skipped": 0, "errors": 0,
-            "dropped_invalid": 0,
-            "drop_reasons": {"invalid_candidate_structure": 0,
-                             "invalid_category_key": 0, "invalid_evidence": 0}}
-
-
-def _base_url_host(cfg):
-    base_url = (cfg.get("llm", {}).get("base_url") or "")
-    return base_url.split("://", 1)[-1].split("/", 1)[0] if base_url else None
-
-
-def _daily_auto_writes(data_dir):
-    from .. import clock as clock_module
-    today = clock_module.now_local().strftime("%Y-%m-%d")
-    count = 0
-    for run in extract_state.load_runs(data_dir, 100):
-        if str(run.get("started_at") or "").startswith(today):
-            count += int((run.get("counters") or {}).get("auto_written") or 0)
-    return count
-
-
-def _entry_for_fact(model, fact_id):
-    fact = model.fact(fact_id)
-    if fact is None:
-        return None
-    line = model.lines[fact["line_id"]]
-    category = model.category(line["category_key"])
-    return {"fact_id": fact["fact_id"], "line_id": fact["line_id"],
-            "category_key": line["category_key"], "kind": "current",
-            "content": fact["content"], "valid_from": fact["valid_from"],
-            "valid_to": fact["valid_to"],
-            "disabled": bool(category and not category["enabled"])}
-
-
-def _recall_entries_for(model, recall_result):
-    entries = []
-    for fact_id in (recall_result.get("recalled_fact_ids") or []):
-        entry = _entry_for_fact(model, fact_id)
-        if entry:
-            entries.append(entry)
-    for fact_id in (recall_result.get("historical_fact_ids") or []):
-        fact = model.fact(fact_id)
-        if fact is None:
-            continue
-        line = model.lines[fact["line_id"]]
-        category = model.category(line["category_key"])
-        entries.append({"fact_id": fact["fact_id"], "line_id": fact["line_id"],
-                        "category_key": line["category_key"], "kind": "historical",
-                        "content": fact["content"], "valid_from": fact["valid_from"],
-                        "valid_to": fact["valid_to"],
-                        "disabled": bool(category and not category["enabled"])})
-    return entries
-
 def resolve_extract_candidate(data_dir, candidate_id, action, patch=None,
                               confirm_token=None):
     return extract_review.resolve_extract_candidate(
         data_dir, candidate_id, action, patch, confirm_token)
-
-def _dedupe_index(model, data_dir):
-    """evidence_key → existing_fact_id（来自既有事实 extraction）+ 已接受候选。"""
-    index = {}
-    for fact in model.all_facts():
-        extraction = fact.get("extraction")
-        if not extraction:
-            continue
-        key = extract_state.evidence_key_for(
-            extraction.get("session_id"), extraction.get("message_ids") or [],
-            fact["content"])
-        index[key] = fact["fact_id"]
-    for candidate in extract_state.load_candidates(data_dir).values():
-        key = (candidate.get("dedupe") or {}).get("evidence_key")
-        if key and candidate.get("status") in ("pending", "approved", "duplicate"):
-            index.setdefault(key, (candidate.get("write") or {}).get("fact_id"))
-    return index
-
 
 def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
                 max_messages=None):
@@ -200,7 +132,10 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
     start_monotonic = time.time()
     run_id = ids.new_uuid7()
     started_at = clock.now_recorded_at()
+    extract_llm.reset_usage_totals()
     counters = _empty_counters()
+    counters.update({"sessions_entered_extraction": 0, "divert_extract": 0,
+                     "divert_skip": 0, "divert_failed": 0})
     run_errors = []
     fatal_error = None
     sessions_summary = []
@@ -224,6 +159,7 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
     sources = extract_cfg.get("sources") or {}
     dsh_home = sources.get("dsh_home") or "~/.dsh"
     allow_plain = bool(sources.get("allow_plain"))
+    sensitive = bool(extract_cfg.get("sensitive_filter", True))
     paths = session_source.discover_sessions(dsh_home, allow_plain=allow_plain)
     with extract_state.run_lock(data_dir):
         for path in paths:
@@ -257,23 +193,63 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
                 sessions_summary.append({"session_id": session["session_id"],
                                          "status": "no-new-messages"})
                 continue
+            divert_input = session.get("divert_input") or {}
+            try:
+                diversion = extract_divert.divert_session(cfg, divert_input, sensitive)
+            except errors.CoreError as exc:
+                counters["divert_failed"] += 1
+                counters["errors"] += 1
+                run_errors.append({"code": exc.code, "safe_detail": exc.message[:200]})
+                sessions_summary.append(
+                    diversion_record(session, divert_input, "divert_failed",
+                                     "skip", exc.message[:120], exc.code))
+                continue  # 失败不推进水位，下次重试；不中断整次运行
+            llm_calls += 1
+            if diversion["decision"] == "skip":
+                counters["divert_skip"] += 1
+                if not dry_run:
+                    advance_watermark(data_dir, watermarks, session, path,
+                                      new_messages, run_id)
+                sessions_summary.append(
+                    diversion_record(session, divert_input, "diversion_skip",
+                                     "skip", diversion["reason"]))
+                continue
+            counters["divert_extract"] += 1
+            counters["sessions_entered_extraction"] += 1
             counters["sessions_processed"] += 1
             try:
                 chunks = session_source.chunk_messages(
                     {**session, "messages": new_messages})
+                categories = [{"key": category["key"],
+                               "display_name": category["display_name"]}
+                              for category in model.enabled_categories()]
+                buffer = []
                 for chunk in chunks:
-                    if counters["messages_processed"] + len(chunk["messages"]) > limit_messages:
+                    if counters["messages_processed"] + len(chunk["messages"]) \
+                            > limit_messages:
                         break
-                    created, chunk_recall = _process_chunk(
-                        data_dir, model, cfg, chunk, run_id, dry_run, dedupe,
-                        candidates_before, counters)
-                    llm_calls += 2 if created else 1
-                    if chunk_recall:
-                        recall_mode = chunk_recall["mode"]
-                        corpus_bytes = chunk_recall["corpus_bytes"]
-                        recalled_total += chunk_recall["recalled"]
-                        any_truncated = any_truncated or chunk_recall["truncated"]
-                    counters["messages_processed"] += len(chunk["messages"])
+                    buffer.extend(ops.extract_chunk(cfg, chunk, model, categories,
+                                                    sensitive, counters))
+                    llm_calls += 1
+                kept, stats = ops.postprocess_session(buffer)
+                for key in ("candidates_extracted", "candidates_after_dedup",
+                            "candidates_kept", "dropped_duplicate_summary",
+                            "dropped_by_session_cap"):
+                    counters[key] = counters.get(key, 0) + stats[key]
+                prepared = ops.prepare_kept(kept, session["session_id"],
+                                            candidates_before, dedupe, counters)
+                created, chunk_recall = 0, None
+                if prepared:
+                    created, chunk_recall = _decide_session(
+                        data_dir, model, cfg, session["session_id"], prepared,
+                        run_id, dry_run, dedupe, counters)
+                    llm_calls += 1
+                if chunk_recall:
+                    recall_mode = chunk_recall["mode"]
+                    corpus_bytes = chunk_recall["corpus_bytes"]
+                    recalled_total += chunk_recall["recalled"]
+                    any_truncated = any_truncated or chunk_recall["truncated"]
+                counters["messages_processed"] += len(new_messages)
             except errors.CoreError as exc:
                 counters["errors"] += 1
                 run_errors.append({"code": exc.code, "safe_detail": exc.message[:200]})
@@ -283,23 +259,20 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
                         or exc.code in ("EXTRACT_ZSTD_UNAVAILABLE",):
                     fatal_error = exc
                 break
-            if not dry_run and new_messages:
-                last = new_messages[-1]
-                watermarks["sessions"][session["session_id"]] = {
-                    "path": path,
-                    "last_seq": max(message["seq"] for message in new_messages),
-                    "last_message_id": last["message_id"],
-                    "last_event_sha256": last["event_sha256"],
-                    "processed_user_messages": (watermark.get("processed_user_messages") or 0)
-                    + len(new_messages),
-                    "updated_at": clock.now_recorded_at(),
-                    "run_id": run_id,
-                }
-                watermarks["updated_at"] = clock.now_recorded_at()
-                extract_state.save_watermarks(data_dir, watermarks)
-            sessions_summary.append({"session_id": session["session_id"],
-                                     "status": "processed",
-                                     "messages": len(new_messages)})
+            if not dry_run:
+                advance_watermark(data_dir, watermarks, session, path,
+                                  new_messages, run_id)
+            processed_record = diversion_record(
+                session, divert_input, "processed", "extract", diversion["reason"])
+            processed_record["messages"] = len(new_messages)
+            processed_record["candidates_extracted"] = stats["candidates_extracted"]
+            processed_record["candidates_after_dedup"] = stats["candidates_after_dedup"]
+            processed_record["candidates_kept"] = stats["candidates_kept"]
+            processed_record["dropped_duplicate_summary"] = stats[
+                "dropped_duplicate_summary"]
+            processed_record["dropped_by_session_cap"] = stats[
+                "dropped_by_session_cap"]
+            sessions_summary.append(processed_record)
     recall_summary = {"mode": recall_mode or "full", "corpus_bytes": corpus_bytes,
                       "candidates": counters["candidates_created"],
                       "recalled": recalled_total, "truncated": any_truncated}
@@ -319,7 +292,14 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
         "llm": {"model": cfg["llm"].get("model"),
                 "base_url_host": _base_url_host(cfg),
                 "latency_ms": int((time.time() - start_monotonic) * 1000),
-                "retries": 0, "calls": llm_calls},
+                "retries": 0, "calls": llm_calls,
+                "prompt_version": constants.EXTRACT_PROMPT_EXTRACTION,
+                "prompts": {"divert": constants.EXTRACT_PROMPT_DIVERT,
+                            "extraction": constants.EXTRACT_PROMPT_EXTRACTION,
+                            "judgment": constants.EXTRACT_PROMPT_JUDGMENT},
+                "prompt_sha256": __import__("hashlib").sha256(
+                    constants.EXTRACT_PROMPT_EXTRACTION.encode("utf-8")).hexdigest(),
+                "usage": extract_llm.usage_totals()},
         "watermark_rebuilt": bool(rebuilt),
         "sessions": sessions_summary,
         "errors": run_errors,
@@ -331,71 +311,9 @@ def extract_run(data_dir, trigger="manual", dry_run=False, session_cwd=None,
     return run
 
 
-def _process_chunk(data_dir, model, cfg, chunk, run_id, dry_run, dedupe,
-                   candidates_before, counters):
+def _decide_session(data_dir, model, cfg, session_id, prepared, run_id, dry_run,
+                    dedupe, counters):
     sensitive = bool(cfg["extract"].get("sensitive_filter", True))
-    categories = [{"key": category["key"], "display_name": category["display_name"]}
-                  for category in model.enabled_categories()]
-    messages = extract_llm.build_extraction_messages(
-        chunk, sensitive_filter=sensitive, categories=categories)
-    extract_tokens = min(
-        constants.EXTRACT_EXTRACT_TOKENS_CAP,
-        constants.EXTRACT_EXTRACT_TOKENS_BASE
-        + constants.EXTRACT_EXTRACT_TOKENS_PER_MESSAGE * len(chunk["messages"]))
-    content = extract_llm.chat_completion(cfg, messages, max_tokens=extract_tokens)
-    valid, dropped = extract_llm.validate_extraction_result(content)
-    counters["dropped_invalid"] = counters.get("dropped_invalid", 0) + dropped
-    counters["drop_reasons"]["invalid_candidate_structure"] += dropped
-    chunk_ids = [message["message_id"] for message in chunk["messages"]]
-    prepared = []
-    for candidate in valid:
-        category_key = extract_llm.resolve_category(candidate["category_key"], categories)
-        if category_key is None:
-            counters["dropped_invalid"] += 1
-            counters["drop_reasons"]["invalid_category_key"] += 1
-            continue
-        category = model.category(category_key)
-        if category is None or category["deleted_at"] is not None \
-                or not category["enabled"]:
-            counters["dropped_invalid"] += 1
-            counters["drop_reasons"]["invalid_category_key"] += 1
-            continue
-        evidence_ids = [item for item in candidate["evidence"]["message_ids"]
-                        if item in chunk_ids]
-        if not evidence_ids:
-            counters["dropped_invalid"] += 1
-            counters["drop_reasons"]["invalid_evidence"] += 1
-            continue
-        redacted, _kinds = extract_privacy.redact_text(candidate["content"], sensitive)
-        if extract_privacy.is_sensitive(candidate["content"], sensitive):
-            counters["sensitive_skipped"] += 1
-            continue
-        candidate_id = extract_state.candidate_id_for(
-            chunk["session_id"], evidence_ids, redacted, category_key, "new")
-        evidence_key = extract_state.evidence_key_for(
-            chunk["session_id"], evidence_ids, redacted)
-        existing_fact_id = dedupe.get(evidence_key)
-        existing_candidate = next((item for item in candidates_before.values()
-                                   if (item.get("dedupe") or {}).get("evidence_key")
-                                   == evidence_key
-                                   and item.get("status") in ("pending", "approved",
-                                                              "duplicate")), None)
-        if existing_fact_id or existing_candidate:
-            counters["duplicates"] += 1
-            continue
-        ordinals = {message["message_id"]: message["ordinal"]
-                    for message in chunk["messages"]}
-        prepared.append({
-            "candidate_id": candidate_id,
-            "content": redacted,
-            "category_key": category_key,
-            "time_hint": candidate["time_hint"],
-            "extraction_confidence": candidate["extraction_confidence"],
-            "message_ids": evidence_ids,
-            "message_ordinals": [ordinals[item] for item in evidence_ids],
-            "evidence_key": evidence_key,
-            "change_type": "new",
-        })
     if not prepared:
         return 0, None
     per_candidate, summary = extract_recall.recall_for_candidates(model, prepared)
@@ -407,8 +325,9 @@ def _process_chunk(data_dir, model, cfg, chunk, run_id, dry_run, dedupe,
         constants.EXTRACT_JUDGE_TOKENS_CAP,
         constants.EXTRACT_JUDGE_TOKENS_BASE
         + constants.EXTRACT_JUDGE_TOKENS_PER_CANDIDATE * len(prepared))
-    judgments_content = extract_llm.chat_completion(cfg, judge_payload,
-                                                    max_tokens=judge_tokens)
+    judgments_content = extract_llm.chat_completion(
+        cfg, judge_payload, max_tokens=judge_tokens,
+        disable_thinking=constants.EXTRACT_JUDGE_DISABLE_THINKING)
     judgments = extract_llm.validate_judgment_result(
         judgments_content, {item["candidate_id"] for item in prepared},
         {item["candidate_id"]: per_candidate[item["candidate_id"]]["recalled_fact_ids"]
@@ -429,15 +348,17 @@ def _process_chunk(data_dir, model, cfg, chunk, run_id, dry_run, dedupe,
             bool(cfg["extract"].get("auto_write")), counters["auto_written"],
             daily_writes)
         candidate = extract_state.new_candidate(
-            candidate_id, chunk["session_id"], item["message_ids"],
-            item["message_ordinals"], chunk["chunk_id"], run_id, item["content"],
+            candidate_id, session_id, item["message_ids"],
+            item["message_ordinals"], item["chunk_id"], run_id, item["content"],
             item["category_key"], "new", item["extraction_confidence"],
             recalc_for_candidate(recall_result), decision, item["evidence_key"],
             relation={"llm": relation["llm"], "target_fact_id": relation["target_fact_id"],
                       "relation_confidence": relation["relation_confidence"],
                       "rationale": relation.get("rationale"),
                       "unverified": relation.get("unverified", False)},
-            system=system, target_fact_id=relation.get("target_fact_id"))
+            system=system, target_fact_id=relation.get("target_fact_id"),
+            granularity=item.get("granularity"), subject=item.get("subject"),
+            summary_subject_key=None, prompt_version=item.get("prompt_version"))
         counters["candidates_created"] += 1
         created += 1
         if decision["action"] == "auto_write" and not dry_run:
@@ -470,6 +391,8 @@ def _process_chunk(data_dir, model, cfg, chunk, run_id, dry_run, dedupe,
             counters["queued"] += 1
             extract_state.append_candidate(data_dir, candidate)
     return created, summary
+
+
 
 
 def recalc_for_candidate(recall_result):

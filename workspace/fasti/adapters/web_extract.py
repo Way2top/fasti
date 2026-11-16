@@ -43,10 +43,11 @@ def dispatch_post(handler, parts, body):
         return True
     if parts == ["api", "extract", "run"]:
         trigger = body.get("trigger") or "manual"
-        if trigger not in ("manual", "web_open"):
-            raise errors.make("USAGE_INVALID_ARGUMENT", "trigger 只能是 manual/web_open",
+        if trigger != "manual":
+            raise errors.make("USAGE_INVALID_ARGUMENT",
+                              "trigger 只能是 manual；网页加载不得自动触发提取",
                               details={"field": "trigger"})
-        run = api.extract_run(data_dir, trigger=trigger)
+        run = api.extract_run(data_dir, trigger="manual")
         handler._ok({"run_id": run["run_id"], "status": "finished", "run": run})
         return True
     if len(parts) == 5 and parts[:3] == ["api", "extract", "candidates"] \

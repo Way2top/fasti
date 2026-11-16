@@ -88,6 +88,25 @@ class TestExtractState(BaseStoreTest):
         all_items = extract_state.list_candidates(self.data_dir, "all")["items"]
         self.assertEqual(len(all_items), 1)
 
+    def test_old_candidate_without_c10_fields_is_readable(self):
+        """M2：C-09 旧候选（无 granularity/subject/prompt_version）仍可读取。"""
+        old = extract_state.new_candidate(
+            "cand-" + "b" * 20, "s1", ["m1"], [1], "chunk", "run-1",
+            "旧候选内容", "tech", "new", 0.9,
+            {"mode": "full", "corpus_bytes": 0, "current_count": 0,
+             "historical_count": 0, "recalled_fact_ids": [],
+             "historical_fact_ids": [], "reasons": {}, "truncated": False},
+            {"action": "review", "reason_code": "auto_write_disabled"},
+            extract_state.evidence_key_for("s1", ["m1"], "旧候选内容"))
+        for key in ("granularity", "subject", "summary_subject_key", "prompt_version"):
+            old.pop(key, None)                     # 模拟 C-09 旧数据
+        extract_state.append_candidate(self.data_dir, old)
+        listed = extract_state.list_candidates(self.data_dir, "all")["items"]
+        self.assertEqual(len(listed), 1)
+        self.assertIsNone(listed[0].get("granularity"))
+        detail = extract_state.get_candidate(self.data_dir, old["candidate_id"])
+        self.assertIsNone(detail.get("prompt_version"))
+
     def test_candidate_not_found(self):
         with self.assertRaises(errors.CoreError) as ctx:
             extract_state.get_candidate(self.data_dir, "cand-" + "0" * 20)

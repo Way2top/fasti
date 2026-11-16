@@ -87,8 +87,8 @@
 | ST-48 | AC-13-1~13-5（防呆） | `node --check fasti/adapters/web_static/app.js` + 断言 IIFE 首尾行 | 修复 R-F1 后 **exit 0**（修复前 `SyntaxError: Unexpected token '}'`，exit 1）；断言首行 `(function () {`、次行 `"use strict";`、倒数第二行 `})();` | ✅ |
 | ST-49 | 静态资源完整性（防呆） | 检查 `web_static/` 三文件存在/非空/单末尾 LF、`index.html` 仅同源引用、零外部 URL、与基线内联内容 sha256 一致 | 全部通过；`app.js` 内容 sha256 `0fb916a6…`、`style.css` 内容 sha256 `d6e0c406…` 与 `git show refactor-baseline:…/index.html` 的内联内容**逐字节相同** | ✅ |
 
-**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **185 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
-自动化测试：`Ran 185 tests … OK`（见 §4.1 与 §13）。
+**统计**：49 条手工/端到端自测用例（47 完全通过、2 条真实环境待验）+ **219 条自动化用例**（C-08 相似检测/令牌/审计 + v3 时间语义/迁移强回归 + UUIDv7/短前缀/格式门/类别复活/持久化守卫/写路径原子性/前端字段契约等，见 §10/§11）；无失败项。
+自动化测试：`Ran 219 tests … OK`（见 §4.1 与 §13）。
 > 注：下表 ST-01~ST-47 中出现的 `fact-0001` / `line-0001` / `cat-0002` 为 **v1（序号方案）历史记录**；C-06 迁移后同一行为以 UUIDv7 + 短前缀复现，见 §9。
 
 ---
@@ -99,9 +99,9 @@
 
 ```
 $ cd workspace && python3 -m unittest discover -s tests -v
-…（185 个用例，全 ok）
+…（219 个用例，全 ok）
 ----------------------------------------------------------------------
-Ran 185 tests in 4.400s
+Ran 219 tests in 7.395s
 
 OK
 ```
@@ -308,7 +308,7 @@ python3 -V                     # 期望 3.9+（实测 3.13.3）
 python3 -c "import sqlite3; print(sqlite3.sqlite_version)"   # 期望 >= 3.38（需 JSON1）
 ```
 
-### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，185 用例）
+### 4.1 一键自动化（覆盖 C-09 自动提取/召回/决策/隐私/迁移 + C-08 防重复 + v3 时间语义 + v2 标识/格式门/写路径原子性/前端字段契约/确定性/导入导出/CLI/网页/分层/静态资源，219 用例）
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -693,7 +693,12 @@ rm -rf "$T" "$N" "$H"     # 自测数据均为临时目录；未写入 ~/.fasti 
 | 32 | **`d3c7404`** | **真实 LLM 阻断修复**：A 段 prompt 注入启用类别清单 + display_name 容错映射 + 丢弃原因摘要（178→181） |
 | 33 | `dede67f` | SELFTEST 记录真实联调修复与手工冒烟步骤 |
 | 34 | **`f24bbe6`** | **真实 LLM 判定段截断修复**：动态 max_tokens（400+300×消息/候选，封顶 3000/4000）、`finish_reason=length` ⇒ `EXTRACT_LLM_TRUNCATED`、JSON 容错解析（181→185） |
-| 35 | 本文件 commit | SELFTEST 记录真实 API 连续 5 次稳定证据 |
+| 35 | `e1ae01e` | SELFTEST 记录真实 API 连续 5 次稳定证据 |
+| 36 | `976b30d` | C-10 M1 | **第 0 层会话分流**：session/title → divert_input（provider 标题优先、首条消息兜底、200/300 截断）、`extract_divert.py`（c10-divert-v1，严格 JSON）、运行接入（skip 推进水位/失败不推进且不中断、逐会话记录）；185→194 |
+| 37 | `3befae1`（C-10 M2） | **抽取 prompt 收紧 c10-extract-v2**：noise 六类/粒度规则/正反例、granularity+subject 校验与丢弃原因、候选 granularity/subject/prompt_version、runs.llm.prompt_version；194→197 |
+| 38 | `c1f2db4`（C-10 M3） | **会话级两阶段**：buffer/summary 去重/确定性排序/5 条上限；`c10-divert-v2`（项目进展算 extract）；197→204 |
+| 39 | `aacc20f`（C-10 M4） | **config/state schema 2 + 迁移**；**修复 DSH 注入消息被当用户消息**（真实 38 会话 645→138 条）；204→214 |
+| 40 | **`1c8cd91`（C-10 M5）** | **取消网页自动触发 + 分流 max_tokens 500**：页面加载零 run/零 LLM；trigger 仅 manual；真实复跑此前 2 个截断会话恢复正常；214→217 |
 | 8 | 本文件 commit | README / SELFTEST 同步（§9.9 前端字段契约修复证据；用例 75） |
 
 ### 9.3 自动化测试（76 用例时点记录；C-07 后为 93 用例，见 §10）
@@ -1476,7 +1481,7 @@ README 与 manifest 版本一致: True
 
 ```
 $ python3 -m unittest discover -s tests
-Ran 185 tests in 4.400s
+Ran 219 tests in 7.395s
 OK
 $ python3 run.py --data-dir <tmp> extract status     # 关闭/同意/配置/待审/水位
 $ python3 run.py --data-dir <tmp> extract config --base-url ... --model ...
@@ -1619,3 +1624,204 @@ $ python3 run.py --data-dir /tmp/fasti-realtest extract
 - **未触碰用户 `~/.fasti`**；真实数据迁移（v3→v4）由 Lead/用户执行 `scripts/migrate_v3_to_v4.py`（先备份 + dry-run）。
 - **等待 QA 独立验证**：重点 AC-16-1~14 / AC-17-1~5 / AC-18-1~9；两段 prompt 断言、auto_write 决策矩阵、
   召回 full/retrieval、水位幂等/重建、隐私打码与 runs 无原文、v3→v4 纯加性迁移。
+
+### 13.9 C-10 M1：第 0 层会话分流（已交付，等待 QA/Lead 验证）
+
+> 范围仅 M1；抽取 prompt 收紧、每会话上限、config schema2、state schema2、前端去自动触发属后续里程碑。
+
+- **session_source**：同一次解析读取全部 `session/title`；取最后一条 `source.kind=provider` 且非空；
+  无 provider ⇒ `title=null`（不拿 fallback 冒充），`title_source=first_message` 用首条用户消息兜底；
+  标题截断 200 字、首条消息截断 300 字（`…[TRUNCATED]`）；`divert_input` 含
+  `{title,title_source,title_truncated,first_user_message,first_message_truncated,
+  user_message_count,title_kinds_seen}`。
+- **extract_divert.py（c10-divert-v1）**：输入仅标题/标题来源/首条消息/消息数（发送前打码），
+  无完整会话/助手/工具/路径/session_id/库数据；输出严格 `{decision,reason}`，非法结构/枚举 ⇒
+  `EXTRACT_LLM_INVALID_RESPONSE`。
+- **运行接入**：extract_run 在「有新消息」后先分流；`skip` ⇒ 跳过抽取但**推进水位**并记录
+  decision/reason/信号来源/截断/消息数；`extract` ⇒ 走既有抽取流程（逻辑未改）；
+  **分流失败 ⇒ 保守 skip、不推进水位、记录 error_code、继续其他会话、下轮重试**。
+- **实测（脱敏）分流 prompt user 段**：
+  ```
+  {"title": "C++ 项目排障记录", "title_source": "provider",
+   "first_user_message": "pnpm build 报错怎么修？", "user_message_count": 9}
+  ```
+- **skip 记录示例**（mock）：`decision=skip`、`reason="纯技术排障，无个人信息"`、
+  `title_source=provider`、`user_message_count=9`；该会话水位推进，第二次运行不再处理。
+- **测试（185→194，新增 9 条）**：标题三夹具（provider/fallback/无标题）、200/300 截断标记、
+  分流 prompt 仅四字段且不含事实/fact_id/session_id/路径/助手消息、分流校验严格、
+  三 prompt 路由分开断言、skip 推进水位且不产候选、分流失败不推进+其他会话继续+下轮重试。
+- **未做/未覆盖**：真实 LLM 分流（M1 用 mock；真实会话统计留待后续里程碑）、抽取收紧/上限/
+  config/state/前端自动触发删除（明确不做）。
+
+### 13.10 C-10 M2：抽取 prompt 收紧（已交付，等待验证）
+
+> 范围仅 M2；会话级 buffer/每会话上限/summary 去重、config v2、state schema2 正式迁移、前端属后续里程碑。
+
+- **prompt `c10-extract-v2`（完整内容见 extract_llm.SYSTEM_EXTRACT）**：
+  - 六类 noise 禁止清单：进度流水 / 子 agent 执行细节 / 工具排障 / 代码架构细节 /
+    对话过程状态 / 临时计划 TODO；
+  - 粒度规则：项目/工作类 ⇒ `granularity="summary"` + `subject` 必填（项目标识，如 fasti），
+    同一项目每会话 1 条 summary（去重留给 M3）；个人信息类 ⇒ `atomic`，subject 可空；
+  - 正例：「在做一个 AI memory 方向的开源项目（Fasti），已完成自动提取，正在验证价值」
+    （summary + subject=fasti）；反例：「架构师交付了 v1.8」「项目采用四角色流程」；
+  - 仍**不含**任何 fact_id/召回/库数据；启用类别清单仅作输出 schema 追加在 system 末尾。
+- **校验/丢弃原因**：`granularity` 枚举 ⇒ `invalid_granularity`；summary.subject 非空 ⇒
+  `missing_subject`；缺 granularity 的旧 mock/旧数据按 atomic 兼容；计数进入
+  `counters.drop_reasons`（CLI `extract`/`runs` 可见）。
+- **可追溯**：候选过程状态新增 `granularity/subject/summary_subject_key/prompt_version`
+  （M2 只加可选字段，不升 state schema；C-09 旧候选读取兼容不报错）；
+  运行记录 `llm.prompt_version="c10-extract-v2"`。
+- **输出示例**（校验通过的两类）：
+  ```json
+  {"granularity":"summary","subject":"fasti",
+   "content":"在做一个 AI memory 方向的开源项目（Fasti），已完成自动提取，正在验证价值"}
+  {"granularity":"atomic","subject":null,"content":"偏好：喜欢猫"}
+  ```
+- **测试（194→197）**：prompt 含六类 noise/粒度规则/正反例且无 fact_id/召回/库数据；
+  summary 缺 subject ⇒ missing_subject；非法 granularity ⇒ invalid_granularity；atomic 保留
+  且候选/runs 带 prompt_version；旧候选（无新字段）可读。`test_extract_run.py` 拆分出
+  `test_extract_granularity.py` 以保持 ≤500 行。
+- **未做**：会话级 buffer/去重/5 条上限（M3）、config schema2（M4）、state schema2 迁移（M4）、
+  前端去自动触发（M5）；真实 LLM prompt 冒烟未在本里程碑执行（M2 用 mock；真实回归在后续）。
+
+### 13.11 C-10 M3：会话级两阶段 + 分流 v2（已交付，等待验证）
+
+> 范围仅 M3；config schema2、state schema2 正式迁移、前端去自动触发属后续里程碑（M4/M5）。
+
+- **会话级 buffer**：分流通过 → 全部分块抽取（不写库/不判定）→ summary 按
+  `summary_subject_key`（NFKC 小写去空白标点）去重、每组保留 extraction_confidence 最高
+  （同分按最早 ordinal/content/chunk_id 确定性）→ 排序（summary 优先 → 置信度降序 →
+  content 字典序 → ordinal → chunk_id）→ 截断 5 条（summary+atomic 都计入，跨块累计）→
+  仅保留项进入既有召回/判定/决策；自动写入与审核行为不变。
+- **可诊断**：`sessions[].candidates_extracted / candidates_after_dedup / candidates_kept /
+  dropped_duplicate_summary / dropped_by_session_cap`；顶层 counters 汇总。
+- **分流 v2（真实 bug 修复）**：`c10-divert-v2` 明确「用户正在做/关注的事项，包括项目与工作
+  进展」⇒ extract（产出 1 条 summary）；纯排障/命令查询/代码审查/角色确认 ⇒ skip；
+  prompt 含正反例（pnpm 报错 skip vs Fasti 项目进展 extract）。
+- **跨 3 块 >5 实测（mock 集成）**：45 条消息 → 3 块 × 3 候选 = 9；
+  `candidates_extracted=9`、`candidates_after_dedup=7`（2 条重复 summary）、
+  `candidates_kept=5`、`dropped_duplicate_summary=2`、`dropped_by_session_cap=2`；
+  实际入队 5 条；sessions[] 同值。
+- **确定性**：同一 buffer 正序/逆序各跑一次 postprocess → 保留内容序列与计数完全一致。
+- **真实 DeepSeek API 验证（临时 store + 伪造 v4 会话；未触碰 ~/.fasti）**：
+  - 项目进展会话 → `decision=extract`（reason：用户陈述在做 Fasti 项目、P0 完成、正在验证价值，
+    属项目进展），产出 **1 条** 候选：`granularity=summary, subject=fasti, category=projects`，
+    内容「正在做 Fasti 项目，P0 已完成，当前在验证自动提取的价值」，进入 review（auto_write=false）；
+  - 纯排障会话 → `decision=skip`，reason「纯 pnpm 构建报错排障，仅询问版本不匹配如何修复，
+    无任何用户身份、偏好或项目进展信息」，候选 0 条。
+- **测试（197→204，新增 7）**：跨 3 块 9 候选截断计数；summary 去重保留最高置信；summary+atomic
+  都计入；确定性选择；单块 ≤5 不误伤；分流 v2 prompt 规则断言；mock「项目进展⇒extract 1 summary /
+  纯排障⇒skip」。
+- **未做**：config schema2（M4）、state schema2 正式迁移（M4）、前端去自动触发（M5）。
+
+### 13.12 C-10 M4：schema 迁移 + 注入消息修复（已交付，等待验证）
+
+- **config 1→2 原子迁移**：删除 `auto_trigger_on_open` / `auto_trigger_min_interval_seconds`，
+  `schema_version=2`，保留 `llm`（含 api_key）/`consent`/其余 extract 配置；临时文件 + fsync +
+  rename，权限 0600；已是 2 且无旧键 ⇒ 不重写（幂等）；只读/写盘失败 ⇒ 内存迁移 +
+  `config_warning`，不崩；JSON 损坏 ⇒ 默认配置 + 告警不崩。
+- **实测迁移前后（临时目录，api_key 脱敏为 `****1234`）**：
+  ```
+  前：schema=1 | extract 键含 auto_trigger_on_open / auto_trigger_min_interval_seconds | 权限 0644
+  后：schema=2 | extract 旧键消失 | llm 全部保留 | consent 保留 | 权限 0600 | 幂等不再重写
+  ```
+- **state schema 2**：新 runs `schema_version=2` + `llm.prompts{divert,extraction,judgment}` +
+  `prompt_sha256`；候选带 granularity/subject/summary_subject_key/prompt_version；旧候选
+  （无新字段）queue/show/approve/reject 正常（读时补默认 null，不回写）；旧 runs 可读。
+- **高优先级 bug 修复（DSH 注入消息）**：`load_session` 仅接受 `user/message` 且
+  `source.kind=="user"`（常量 `USER_MESSAGE_SOURCE_KINDS`）；其他 kind/缺失 source 一律排除，
+  `divert_input.user_message_source_counts` 诊断；`first_user_message` 取第一条真实用户消息并
+  跳过 `<system-reminder>` / `Current runtime context` 开头（前 5 条内）。
+- **真实 38 会话统计（只读，未打印正文）**：
+  ```
+  全部 38 个会话文件：user/message(role=user) 645 → source.kind=user 138（与 Lead 预期 138 一致）
+  kind 分布：time-context 165 / user 138 / agent-message 77 / agent-instructions 76 /
+             subagent-settled 65 / runtime-context 57 / skill-catalog 48 / user-approval 8 /
+             compact-checkpoint 5 / tool-jobs 5 / model-selection 1
+  根会话 23 个，其中有真实用户消息 20 个；根会话 user_message_count 合计 394 → 123
+  （逐会话示例：59ee23cccef5 231→71；6eb798410b8f 26→12；ee45258670a9 11→6；
+    3fb19f3d30d9 8→3；fa1e50e305cb 4→1；其余多为 5→1/2）
+  ```
+- **测试（204→214，新增 10）**：config 迁移保留/权限/幂等/只读告警/损坏降级；旧候选
+  queue/show/approve/reject；旧 runs 可读；新 runs/candidate schema2 字段；混合 source.kind
+  只计 user、缺失 source 排除、first 跳过注入。
+- **未做**：前端去自动触发 / AC-18-10 反向断言（M5）。
+
+### 13.13 C-10 M5：取消网页自动触发 + 分流截断修复（已交付，等待整体 QA）
+
+- **分流 max_tokens 200→500**：`{decision,reason≤120字}` + JSON 包装在真实中文输出下 200 会
+  卡边界截断。真实复跑此前两个 `EXTRACT_LLM_TRUNCATED` 会话：
+  ```
+  为PMS项目创建子代理角色（71 条用户消息）→ decision=extract
+    reason=用户正在推进 PMS 项目，有设计说明书，并与助手讨论设计思路；71 轮对话可能包含项目
+           目标、方案与进展，可产出项目 summary。 prompt_version=c10-divert-v2
+  代理模式PPT讲解大纲设计（1 条真实用户消息）→ decision=extract
+    reason=用户正在准备面向他人的代理模式PPT讲解，属当前工作/学习事项，可提取1条任务背景。
+  两个会话均不再报 TRUNCATED。
+  ```
+- **前端去自动触发（AC-18-10/11）**：删除 `maybeAutoTrigger`、localStorage 节流键
+  `fasti-extract-last-trigger`、`web_open` 调用；页面加载只 GET status/candidates/runs；
+  唯一 POST `/api/extract/run` 在「立即提取」按钮且 `trigger=manual`；index.html 无自动触发开关。
+- **服务端**：`web_extract` 的 trigger 仅接受 `manual`，其他值 400 `USAGE_INVALID_ARGUMENT`，
+  不发起任何 LLM 调用。
+- **测试（214→217）**：静态断言 JS 无 auto_trigger/localStorage/web_open 且只有一处 run 调用；
+  动态页面加载（/、extract.js、app.js、status、candidates、runs）mock LLM 零请求、水位不变、
+  无候选；manual run 正常调用 LLM；web_open 被 400 拒绝且零 LLM 调用。
+- **未覆盖**：无（M5 范围内）；整体 C-10 待 QA 全量验收。
+
+### 13.14 C-10 QA fail 修复（AC-19-7 token 预算 / AC-16-2 粒度展示）
+
+- **token 常量（最终）**：
+  | 段 | 公式 | 封顶 | 示例 |
+  |---|---|---|---|
+  | 抽取 | 1500 + 600×消息数 | 6000 | 1 条=2100，5 条=4500，8+ 条=6000 |
+  | 判定 | 600 + 400×候选数 | 5000 | 5 条=2600 |
+  | 分流 | 固定 500 | — | 已足够（真实无截断） |
+- **真实 20 根会话完整 run（分流+抽取+判定；临时 store；只读会话副本）**：
+  ```
+  status=ok
+  sessions_seen=38（23 个根会话，其中 20 个有真实用户消息）
+  entered_extraction=3 | divert_skip=17 | divert_failed=0
+  messages_processed=74 | candidates_created=7 | errors=0
+  EXTRACT_LLM_TRUNCATED：无
+  ```
+- **粒度展示（真实候选）**：
+  ```
+  CLI summary：粒度：summary（subject=Fasti）
+  CLI atomic ：粒度：atomic
+  旧候选（无字段）：粒度：未知（不报错）
+  网页详情：granularity=summary | subject=Fasti | prompt_version=c10-extract-v2
+  ```
+- **测试（217→218）**：动态 token 公式（3 消息/3 候选 ⇒ 3300/1800）；CLI show 旧候选「未知」
+  + summary subject；网页详情静态含「粒度」；候选详情 API 断言 granularity。
+
+### 13.15 推理模型思考 token 根因修复（分流关闭思考；抽取/判定保留）
+
+- **根因**：`deepseek-flash` 是推理模型，`usage.completion_tokens_details.reasoning_tokens`
+  计入 `max_tokens` 且不可预测（`reasoning_effort` 实测无效），单纯调大预算治标。
+- **客户端**：`chat_completion(..., disable_thinking=True)` 发送
+  `"thinking": {"type": "disabled"}`（对象；字符串会 422）；默认不发送。运行记录新增
+  `llm.usage{calls,prompt_tokens,completion_tokens,reasoning_tokens}`。
+- **分流**：关闭思考（简单分类任务），`max_tokens` 800（实际约 40），6/6 真实会话判定与开思考一致。
+- **抽取/判定 A/B（真实 20 根会话只读副本；分流均关思考，仅比较抽取/判定）**：
+  | 模式 | 进入抽取 | 候选数 | completion | reasoning | 错误/截断 |
+  |---|---|---|---|---|---|
+  | 关思考 | 4 | 9 | 4495 | 0 | 0 / 0 |
+  | 开思考 | 5 | 15 | 11768 | 6270 | 0 / 0 |
+  内容集合不一致、关思考明显少抽取（9 vs 15）⇒ 无法证明质量等价；**保守选择：抽取/判定保留思考**。
+- **最终 token 预算**：
+  | 段 | 思考 | 公式 | 封顶 |
+  |---|---|---|---|
+  | 分流 | 关闭 | 800 固定 | — |
+  | 抽取 | 开启 | 6000 + 1000×消息数 | 12000 |
+  | 判定 | 开启 | 800 + 500×候选数 | 6000 |
+- **最终完整真实 run（20 个有真实消息的根会话；临时 store + 只读会话副本）**：
+  ```
+  status = ok
+  sessions_seen=38（23 根，20 有真实消息） | entered_extraction=5
+  divert_extract=5 | divert_skip=15 | divert_failed=0
+  messages_processed=86 | candidates_created=13 | errors=0
+  EXTRACT_LLM_TRUNCATED = 0
+  llm.usage: calls=33, prompt_tokens=23293, completion_tokens=15998, reasoning_tokens=10286
+  ```
+- **测试（218→219）**：thinking 必须是对象、默认不发送；usage/reasoning 累计；token 公式更新。

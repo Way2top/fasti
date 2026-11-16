@@ -19,14 +19,14 @@ def _write_plain_session(dsh_home, workspace="ws", session="s1", events=None):
                                      "isSeeded": False, "session_id": "sess-1",
                                      "cwd": "/project/a"}},
         {"seq": 1, "type": "user/message",
-         "data": {"id": "m1", "role": "user",
+         "data": {"id": "m1", "role": "user", "source": {"kind": "user"},
                   "content": [{"type": "text", "text": "我喜欢 Python"}]}},
         {"seq": 2, "type": "assistant/message",
          "data": {"id": "m2", "role": "assistant",
                   "content": [{"type": "text", "text": "好的"}]}},
         {"seq": 3, "type": "tool/call", "data": {"tool": "x"}},
         {"seq": 4, "type": "user/message",
-         "data": {"id": "m3", "role": "user",
+         "data": {"id": "m3", "role": "user", "source": {"kind": "user"},
                   "content": [{"type": "text", "text": "我住在上海"},
                               {"type": "text", "text": "，喜欢 C++"}]}},
     ]
@@ -126,7 +126,7 @@ class TestSessionSource(BaseStoreTest):
                                       "data": {"version": 4, "delegationDepth": 1,
                                                "isSeeded": False, "session_id": "sub"}},
                                      {"seq": 1, "type": "user/message",
-                                      "data": {"id": "x", "role": "user",
+                                      "data": {"id": "x", "role": "user", "source": {"kind": "user"},
                                                "content": [{"type": "text", "text": "x"}]}}])
         _write_plain_session(self.dsh_home, workspace="ws", session="seed",
                              events=[{"type": "session",
@@ -156,7 +156,7 @@ class TestSessionSource(BaseStoreTest):
                                              "data": {"version": 4, "delegationDepth": 0,
                                                       "isSeeded": False, "session_id": "long"}},
                                             {"seq": 1, "type": "user/message",
-                                             "data": {"id": "m", "role": "user",
+                                             "data": {"id": "m", "role": "user", "source": {"kind": "user"},
                                                       "content": [{"type": "text",
                                                                    "text": "a" * 2000}]}}])
         session = session_source.load_session(path, allow_plain=True)

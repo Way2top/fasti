@@ -33,36 +33,6 @@
     node.className = bad ? "msg bad" : "msg";
   }
 
-  function maybeAutoTrigger(data) {
-    if (!data.enabled || !data.auto_trigger_on_open || !data.consent.accepted) { return; }
-    if (!data.config_ok) { return; }
-    var interval = (data.auto_trigger_min_interval_seconds || 60) * 1000;
-    var last = 0;
-    try { last = parseInt(window.localStorage.getItem("fasti-extract-last-trigger") || "0", 10); }
-    catch (err) { last = 0; }
-    if (Date.now() - last < interval) { return; }
-    try { window.localStorage.setItem("fasti-extract-last-trigger", String(Date.now())); }
-    catch (err) { /* 忽略：无 localStorage 时仍允许本次触发 */ }
-    msg("页面加载：正在自动增量提取（web_open）…");
-    call("/api/extract/run", { method: "POST", body: { trigger: "web_open" } })
-      .then(function (payload) {
-        var run = payload.run;
-        var counters = run.counters;
-        msg("自动提取完成：会话 " + counters.sessions_processed + " / 消息 " +
-            counters.messages_processed + "；候选 " + counters.candidates_created);
-        renderStatusFromRun(run, data);
-        refresh();
-      })
-      .catch(function (err) { msg("自动提取失败（不影响其他功能）：" +
-                                  (err.message || err.code), true); });
-  }
-
-  function renderStatusFromRun(run, data) {
-    if (run.watermark_rebuilt) {
-      msg("提示：检测到水位缺失/损坏，已从事实证据重建水位");
-    }
-  }
-
   function renderStatus(data) {
     config = data;
     text("extract-status",
@@ -173,6 +143,9 @@
         var candidate = data.candidate;
         var lines = ["候选 " + candidate.candidate_id,
                      "状态：" + candidate.status + "；内容：" + candidate.content,
+                     "粒度：" + (candidate.granularity === "summary" ?
+                       ("summary（subject=" + (candidate.subject || "-") + "）") :
+                       (candidate.granularity || "未知")),
                      "召回：mode=" + candidate.recall.mode + "，bytes=" +
                      candidate.recall.corpus_bytes + "，truncated=" +
                      candidate.recall.truncated];
@@ -217,7 +190,6 @@
   function refresh() {
     call("/api/extract/status").then(function (data) {
       renderStatus(data);
-      maybeAutoTrigger(data);
     }).catch(function (err) {
       text("extract-status", "读取失败：" + (err.message || err.code));
     });
@@ -255,6 +227,9 @@
         msg("完成：会话 " + counters.sessions_processed + " / 消息 " +
             counters.messages_processed + "；候选 " + counters.candidates_created +
             "（自动写 " + counters.auto_written + "，待审 " + counters.queued + "）");
+        if (data.run.watermark_rebuilt) {
+          msg("提示：检测到水位缺失/损坏，已从事实证据重建水位");
+        }
         refresh();
       })
       .catch(function (err) {

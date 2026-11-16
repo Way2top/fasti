@@ -93,6 +93,31 @@ class TestLlmClient(unittest.TestCase):
             extract_llm.chat_completion(CFG, [{"role": "user", "content": "hi"}])
         self.assertEqual(ctx.exception.code, "EXTRACT_LLM_TIMEOUT")
 
+    def test_thinking_disable_payload_and_usage(self):
+        seen = {}
+
+        class Transport(object):
+            def __call__(self, url, headers, body, timeout):
+                payload = json.loads(body.decode("utf-8"))
+                seen.update(payload)
+                return 200, json.dumps({"choices": [{"finish_reason": "stop",
+                                                     "message": {"content": "{}"}}],
+                                        "usage": {"prompt_tokens": 10,
+                                                  "completion_tokens": 30,
+                                                  "completion_tokens_details": {
+                                                      "reasoning_tokens": 12}}}).encode()
+        extract_llm.set_transport(Transport())
+        extract_llm.reset_usage_totals()
+        extract_llm.chat_completion(CFG, [{"role": "user", "content": "x"}],
+                                    disable_thinking=True)
+        self.assertEqual(seen["thinking"], {"type": "disabled"})   # 必须是对象
+        self.assertEqual(extract_llm.last_usage()["reasoning_tokens"], 12)
+        self.assertEqual(extract_llm.usage_totals()["completion_tokens"], 30)
+        self.assertEqual(extract_llm.usage_totals()["reasoning_tokens"], 12)
+        seen.clear()
+        extract_llm.chat_completion(CFG, [{"role": "user", "content": "x"}])
+        self.assertNotIn("thinking", seen)                         # 默认不发送
+
     def test_truncation_is_dedicated_error(self):
         envelope = json.dumps({"choices": [{"finish_reason": "length", "message": {
             "content": '{"judgments":[{"candidate_id":"cand-'}}]}).encode()
@@ -169,10 +194,45 @@ class TestLlmClient(unittest.TestCase):
         ]}
         valid, dropped = extract_llm.validate_extraction_result(json.dumps(good))
         self.assertEqual(len(valid), 1)
-        self.assertEqual(dropped, 2)
+        self.assertEqual(dropped["invalid_candidate_structure"], 2)
         with self.assertRaises(errors.CoreError) as ctx:
             extract_llm.validate_extraction_result('{"candidates": "nope"}')
         self.assertEqual(ctx.exception.code, "EXTRACT_LLM_INVALID_RESPONSE")
+
+    def test_granularity_validation_and_prompt_rules(self):
+        """M2：noise 六类/粒度规则进 prompt；granularity/subject 校验与丢弃原因。"""
+        prompt = extract_llm.SYSTEM_EXTRACT
+        for marker in ("禁止抽取的六类噪音", "项目/工作进度流水",
+                       "子 agent / 任务执行细节", "工具报错与排障细节",
+                       "代码/文件/架构具体细节", "对话过程性状态",
+                       "临时计划、TODO、待办", "granularity", "summary", "atomic",
+                       "subject 必填", "同一项目在同一会话中只产出 1 条 summary",
+                       "在做一个 AI memory 方向的开源项目（Fasti）"):
+            self.assertIn(marker, prompt)
+        messages = extract_llm.build_extraction_messages(
+            {"messages": [{"ordinal": 1, "message_id": "m1", "chunk_text": "x"}]},
+            categories=[{"key": "tech", "display_name": "技术背景"}])
+        sent = json.dumps(messages, ensure_ascii=False)
+        self.assertIn("禁止抽取的六类噪音", sent)
+        self.assertIn("tech / 技术背景", sent)        # 类别 schema
+        self.assertNotIn("fact_id", sent)
+        self.assertNotIn("召回", sent)
+        payload = {"candidates": [
+            {"content": "旧数据", "category_key": "tech", "extraction_confidence": 0.9,
+             "evidence": {"message_ids": ["m1"]}},                     # 无 granularity：兼容
+            {"content": "缺 subject", "category_key": "tech", "granularity": "summary",
+             "extraction_confidence": 0.9, "evidence": {"message_ids": ["m1"]}},
+            {"content": "非法粒度", "category_key": "tech", "granularity": "project",
+             "extraction_confidence": 0.9, "evidence": {"message_ids": ["m1"]}},
+            {"content": "偏好：喜欢猫", "category_key": "tech", "granularity": "atomic",
+             "subject": None, "extraction_confidence": 0.9,
+             "evidence": {"message_ids": ["m1"]}},
+        ]}
+        valid, dropped = extract_llm.validate_extraction_result(json.dumps(payload))
+        self.assertEqual([item["granularity"] for item in valid], ["atomic", "atomic"])
+        self.assertEqual(dropped["missing_subject"], 1)
+        self.assertEqual(dropped["invalid_granularity"], 1)
+        self.assertEqual(valid[0]["subject"], None)
 
     def test_validate_judgments(self):
         candidate_id = "cand-" + "a" * 20
